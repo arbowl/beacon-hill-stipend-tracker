@@ -22,21 +22,53 @@ def stipend_amounts_for_roles(role_keys: list[str]) -> list[tuple[str, int]]:
     return pairs[:2]
 
 
-def export_leadership_metrics(rows: list[dict], path="out/leadership_power.json"):
+def export_leadership_metrics(
+    rows: list[dict], path="out/leadership_power.json"
+):
     Path("out").mkdir(parents=True, exist_ok=True)
     totals = [r["total_comp"] for r in rows if r.get("total_comp")]
-    role_sums = [r["role_stipends_total"] for r in rows if r.get("role_stipends_total") is not None]
-    stipend_recipients = [r for r in rows if r.get("role_stipends_total", 0) > 0]
+    role_sums = [
+        r["role_stipends_total"] for r in rows
+        if r.get("role_stipends_total") is not None
+    ]
+    leadership_recipients = [
+        r for r in rows if r.get("role_stipends_total", 0) > 0
+    ]
+    expense_sums = [
+        r["expense_stipend"] for r in rows if r.get("expense_stipend")
+    ]
+    le50_count = sum(
+        1 for r in rows if r.get("distance_band") == "LE50"
+    )
+    gt50_count = sum(
+        1 for r in rows if r.get("distance_band") == "GT50"
+    )
     top10 = sorted(totals, reverse=True)[:max(1, len(totals)//10)]
+    pct_with_leadership = round(
+        100 * len(leadership_recipients) / max(1, len(rows)), 1
+    )
+    top10_avg = (
+        round(sum(top10)/len(top10), 2) if top10 else None
+    )
+    notes = (
+        "Leadership stipends = committee/leadership positions. "
+        "Expense stipends = travel allowance based on distance "
+        "from State House."
+    )
     metrics = {
         "members": len(rows),
-        "members_with_stipends": len(stipend_recipients),
-        "pct_with_stipends": round(100 * len(stipend_recipients) / max(1, len(rows)), 1),
-        "total_stipend_dollars": sum(role_sums),
+        "members_with_leadership_stipends": len(leadership_recipients),
+        "pct_with_leadership_stipends": pct_with_leadership,
+        "total_leadership_stipend_dollars": sum(role_sums),
+        "total_expense_stipend_dollars": sum(expense_sums),
+        "expense_stipend_breakdown": {
+            "le50_miles": {"count": le50_count, "amount": 15000},
+            "gt50_miles": {"count": gt50_count, "amount": 20000}
+        },
         "median_total_comp": median(totals) if totals else None,
-        "top10_avg_total_comp": round(sum(top10)/len(top10), 2) if top10 else None,
+        "top10_avg_total_comp": top10_avg,
         "generated_at": date.today().isoformat(),
-        "notes": "Quick aggregate; full Gini optional."
+        "notes": notes
     }
     Path(path).write_text(json.dumps(metrics, indent=2))
     print(f"[ok] Wrote {path}")
@@ -57,7 +89,8 @@ def band_for_member(
     if ll:
         miles = round(haversine_miles(ll, STATE_HOUSE_LATLON), 1)
         band = "LE50" if miles <= 50.0 else "GT50"
-        return band, miles, f"{(member_record.get('district') or '').strip()} (centroid)"
+        district = (member_record.get('district') or '').strip()
+        return band, miles, f"{district} (centroid)"
     return None, None, None
 
 
@@ -85,9 +118,12 @@ def compute_totals(
         role_1, r1_amt = (top2[0] if len(top2) > 0 else (None, 0))
         role_2, r2_amt = (top2[1] if len(top2) > 1 else (None, 0))
         band, miles, locality = band_for_member(code, m)
-        band_source = ("LOCALITY" if locality and "(centroid)" not in (locality or "")
-                    else "DISTRICT_CENTROID" if locality and "(centroid)" in locality
-                    else None)
+        if locality and "(centroid)" not in (locality or ""):
+            band_source = "LOCALITY"
+        elif locality and "(centroid)" in locality:
+            band_source = "DISTRICT_CENTROID"
+        else:
+            band_source = None
         clean_locality = None if band_source == "DISTRICT_CENTROID" else locality
         expense = CYCLE_CONFIG["expense_bands"].get(band, 0) if band else 0
         base = int(CYCLE_CONFIG["base_salary"])

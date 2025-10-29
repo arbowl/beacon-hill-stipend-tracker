@@ -2,9 +2,11 @@ from datetime import datetime
 import json
 from pathlib import Path
 from sys import stderr
+from time import sleep
 from typing import Optional
 
 from src.helpers import api_get
+from src.scraper import scrape_vice_chairs
 
 
 def get_gc_number(session: dict) -> int:
@@ -56,7 +58,7 @@ def load_members_cache(gc_number: int) -> tuple[Optional[list[dict]], Optional[s
 
 def save_members_cache(gc_number: int, members: list[dict]) -> None:
     """Saves members data to cache file."""
-    cache_dir = Path(__file__).parent / "data" / "cache"
+    cache_dir = Path(__file__).parent.parent / "data" / "cache"
     cache_file = cache_dir / f"members_{gc_number}.json"
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -146,7 +148,7 @@ def load_committee_cache(
 
 def save_committee_cache(gc_number: int, committee_code: str, detail: dict) -> None:
     """Save committee detail to cache file."""
-    cache_dir = Path(__file__).parent / "data" / "cache"
+    cache_dir = Path(__file__).parent.parent / "data" / "cache"
     safe_code = str(committee_code).replace("/", "_").replace(" ", "_")
     cache_file = cache_dir / f"committee_{gc_number}_{safe_code}.json"
     try:
@@ -161,13 +163,93 @@ def save_committee_cache(gc_number: int, committee_code: str, detail: dict) -> N
         print(f"Error saving committee cache: {e}", file=stderr)
 
 
-def fetch_committee_detail(gc_number: int, committee_code: str) -> Optional[dict]:
-    cached, cached_at = load_committee_cache(gc_number, committee_code)
-    if cached:
-        print(f"Using cached committee detail for {committee_code} from {cached_at}")
-        return cached
-    print(f"Fetching committee detail from API for {committee_code}...")
-    detail = api_get(f"/GeneralCourts/{gc_number}/Committees/{committee_code}")
+def fetch_committee_detail(
+    gc_number: int,
+    committee_code: str,
+    base_url: str = "https://malegislature.gov"
+) -> Optional[dict]:
+    """
+    Fetch committee detail from API and scrape vice chair information.
+
+    Args:
+        gc_number: General Court number (e.g., 194)
+        committee_code: Committee code (e.g., 'H33', 'J10')
+        base_url: Base URL for scraping
+
+    Returns:
+        Combined dict with API data and vice_chairs field
+    """
+    cache_dir = Path(__file__).parent.parent / "data" / "cache"
+    safe_code = str(committee_code).replace("/", "_").replace(" ", "_")
+    cache_file = cache_dir / f"committee_{gc_number}_{safe_code}.json"
+
+    # Try to load from cache
+    if cache_file.exists():
+        try:  # pylint: disable=broad-exception-caught
+            with open(cache_file, "r", encoding="utf-8") as f:
+                cached_data = json.load(f)
+                detail = cached_data.get("detail")
+                vice_chairs = cached_data.get("vice_chairs")
+                cached_at = cached_data.get("cached_at")
+
+                # If we have both API data and vice chairs, return
+                if detail and vice_chairs:
+                    msg = (f"Using cached committee detail for "
+                           f"{committee_code} from {cached_at}")
+                    print(msg)
+                    # Merge vice_chairs into detail for convenience
+                    detail["vice_chairs"] = vice_chairs
+                    return detail
+
+                # If we have API data but no vice chairs, scrape below
+                if detail:
+                    msg = (f"Cached API data found for {committee_code}, "
+                           "checking for vice chairs...")
+                    print(msg)
+        except Exception as e:
+            print(f"Error loading committee cache: {e}", file=stderr)
+
+    # Fetch from API if not in cache
+    detail = None
+    if not cache_file.exists():
+        msg = f"Fetching committee detail from API for {committee_code}..."
+        print(msg)
+        path = f"/GeneralCourts/{gc_number}/Committees/{committee_code}"
+        detail = api_get(path)
+        if not detail:
+            return None
+    else:
+        # We have cached API data, just need vice chairs
+        try:  # pylint: disable=broad-exception-caught
+            with open(cache_file, "r", encoding="utf-8") as f:
+                cached_data = json.load(f)
+                detail = cached_data.get("detail")
+        except Exception:
+            pass
+
+    # Scrape vice chairs from HTML
+    print(f"  → Scraping vice chairs for {committee_code}...")
+    vice_chairs = scrape_vice_chairs(base_url, gc_number, committee_code)
+
+    # Add delay to be polite
+    sleep(0.15)
+
+    # Save to cache with vice chairs
     if detail:
-        save_committee_cache(gc_number, committee_code, detail)
+        try:  # pylint: disable=broad-exception-caught
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_data = {
+                "detail": detail,
+                "vice_chairs": vice_chairs,
+                "cached_at": datetime.now().isoformat(),
+                "vice_chairs_cached_at": datetime.now().isoformat(),
+            }
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(cache_data, f, indent=2)
+
+            # Merge vice_chairs into detail for convenience
+            detail["vice_chairs"] = vice_chairs
+        except Exception as e:
+            print(f"Error saving committee cache: {e}", file=stderr)
+
     return detail

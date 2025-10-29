@@ -31,18 +31,6 @@ EPSG_WGS84: int = 4_326
 CENTROIDS_PATH: Path = Path("data/district_centroids.json")
 
 
-def build_or_load_centroids() -> dict:
-    if CENTROIDS_PATH.exists():
-        print("[info] district_centroids.json found — loading.")
-        return json.loads(CENTROIDS_PATH.read_text())
-    out = ensure_leg_district_shapefiles(SENATE_URL, HOUSE_URL, dest_dir="data/shapefiles")
-    centroids = load_and_centroid(out)
-    return centroids
-
-
-CENTROIDS = build_or_load_centroids()
-
-
 def _download(url: str, dest_zip: Path) -> tuple[bool, Optional[str]]:
     dest_zip.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -92,7 +80,7 @@ def ensure_leg_district_shapefiles(
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
     senate_target = dest / SENATE_SHAPEFILE
-    house_target  = dest / HOUSE_SHAPEFILE
+    house_target = dest / HOUSE_SHAPEFILE
     results = {Chamber.senate: None, Chamber.house: None}
     if senate_target.exists() and house_target.exists():
         results[Chamber.senate] = senate_target
@@ -155,6 +143,15 @@ def ensure_leg_district_shapefiles(
             results["house"] = house_target
             print(f"[info] House shapefile already present → {house_target}")
     return results
+
+
+def build_or_load_centroids() -> dict:
+    if CENTROIDS_PATH.exists():
+        print("[info] district_centroids.json found — loading.")
+        return json.loads(CENTROIDS_PATH.read_text())
+    out = ensure_leg_district_shapefiles(SENATE_URL, HOUSE_URL, dest_dir="data/shapefiles")
+    centroids = load_and_centroid(out)
+    return centroids
 
 
 def _process(path: Path, chamber_label: str) -> dict:
@@ -240,3 +237,6 @@ def centroid_for(member_record: dict) -> Optional[tuple[float, float]]:
     if ll:
         return float(ll[0]), float(ll[1])
     return None
+
+
+CENTROIDS = build_or_load_centroids()

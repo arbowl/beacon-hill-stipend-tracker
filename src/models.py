@@ -1,37 +1,31 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 
 API_BASE = "https://malegislature.gov/api"
-CYCLE_CONFIG: dict[str, str | int] = {
-    "cycle": "2025-2026",
-    "effective_date": "2025-01-01",
-    "base_salary": 82_044,
-    # https://www.lowellsun.com/2025/04/28/beacon-hill-roll-call-breaking-down-salaries-benefits-of-state-reps/
-    "expense_bands": {"LE50": 15_000, "GT50": 20_000},
-    # https://malegislature.gov/Laws/GeneralLaws/PartI/TitleI/Chapter3/Section9C
-    "stipends": {
-        "SPEAKER": 80_000,
-        "SENATE_PRESIDENT": 80_000,
-        "MAJORITY_LEADER": 60_000,
-        "MINORITY_LEADER": 60_000,
-        "PRESIDENT_PRO_TEMPORE": 50_000,
-        "SPEAKER_PRO_TEMPORE": 50_000,
-        "WAYS_MEANS_CHAIR": 65_000,
-        "WAYS_MEANS_VICECHAIR": 30_000,
-        "COMMITTEE_CHAIR_TIER_A": 30_000,
-        "COMMITTEE_CHAIR_TIER_B": 15_000,
-        "COMMITTEE_VICECHAIR": 5_200,
-        "WHIP": 35_000,
-        "ASST_MAJ_WHIP": 35_000,
-        "ASST_MIN_WHIP": 35_000,
-    },
-    # https://malegislature.gov/Laws/GeneralLaws/PartI/TitleI/Chapter3/Section9b
-}
 STATE_HOUSE_LATLON: tuple[float, float] = (42.3570, -71.0630)
+
+
+def load_cycle_config(cycle: str = "2025-2026") -> dict:
+    """Load cycle configuration from JSON file."""
+    config_path = (
+        Path(__file__).parent.parent / "data" / "cycle" / f"{cycle}.json"
+    )
+    if not config_path.exists():
+        raise FileNotFoundError(f"Cycle config not found: {config_path}")
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+# Load the current cycle configuration
+CYCLE_CONFIG = load_cycle_config()
+
+
+# Leadership role mapping
 ROLE_MAP: dict[str, str] = {
     "Speaker of the House": "SPEAKER",
     "President of the Senate": "SENATE_PRESIDENT",
@@ -46,12 +40,61 @@ ROLE_MAP: dict[str, str] = {
     "Chair": "COMMITTEE_CHAIR_TIER_A",
     "Vice Chair": "COMMITTEE_VICECHAIR",
 }
+
+
+# Committee chair tier overrides (Tier A gets higher stipend)
+# Ways & Means is special ($65k), other Tier A get $30k, Tier B get $15k
 TIER_OVERRIDES: dict[str, str] = {
+    # Special: Ways & Means chairs
     "House Committee on Ways and Means": "WAYS_MEANS_CHAIR",
     "Senate Committee on Ways and Means": "WAYS_MEANS_CHAIR",
+    # Tier A committees ($30k for chairs)
     "House Committee on Rules": "COMMITTEE_CHAIR_TIER_A",
     "Senate Committee on Rules": "COMMITTEE_CHAIR_TIER_A",
+    "Joint Committee on Rules": "COMMITTEE_CHAIR_TIER_A",
+    "House Committee on Steering, Policy and Scheduling": (
+        "COMMITTEE_CHAIR_TIER_A"
+    ),
+    "Senate Committee on Steering and Policy": "COMMITTEE_CHAIR_TIER_A",
+    "House Committee on Bonding, Capital Expenditures and State Assets": (
+        "COMMITTEE_CHAIR_TIER_A"
+    ),
+    "Senate Committee on Bonding, Capital Expenditures and State Assets": (
+        "COMMITTEE_CHAIR_TIER_A"
+    ),
+    "Joint Committee on Ethics": "COMMITTEE_CHAIR_TIER_A",
+    "Joint Committee on Global Warming and Climate Change": (
+        "COMMITTEE_CHAIR_TIER_A"
+    ),
+    "Joint Committee on Health Care Financing": "COMMITTEE_CHAIR_TIER_A",
+    "Joint Committee on Post Audit and Oversight": "COMMITTEE_CHAIR_TIER_A",
+    "Joint Committee on Revenue": "COMMITTEE_CHAIR_TIER_A",
+    "Joint Committee on Transportation": "COMMITTEE_CHAIR_TIER_A",
 }
+
+
+# Vice chair tier overrides (Tier A vice chairs - per MA Almanac)
+# Note: Vice chair Tier A list differs from chair Tier A list
+VICECHAIR_TIER_A_COMMITTEES = {
+    "Bonding",
+    "Economic Development",
+    "Education",
+    "Financial Services",
+    "Health Care Financing",
+    "Judiciary",
+    "Post-Audit",
+    "Post Audit",  # Alternative spelling
+    "Revenue",
+    "Rules",
+    "State Administration",
+    "Steering",
+    "Telecommunications",
+    "Third Reading",
+    "Transportation",
+}
+
+
+# Runtime overrides and caches
 HOME_LOCALITY_OVERRIDES: dict[str, str] = {}
 PAYROLL_ACTUAL: dict[str, int] = {}
 GEOCODE_CACHE: dict[str, tuple[float, float]] = {}
@@ -61,36 +104,3 @@ GEOCODE_CACHE: dict[str, tuple[float, float]] = {}
 class Chamber:
     senate: Literal["senate"] = "senate"
     house: Literal["house"] = "house"
-
-
-@dataclass
-class ShapefilePaths:
-    chamber: Chamber
-    filepath: Path
-
-
-@dataclass
-class CycleConfig:
-    cycle: str
-    effective_date: str
-    base_salary: int
-    expense_bands: dict[str, int]
-    stipends: CycleStipends
-
-
-@dataclass
-class CycleStipends:
-    speaker: int
-    senate_president: int
-    majority_leader: int
-    minority_leader: int
-    president_pro_tempore: int
-    speaker_pro_tempore: int
-    ways_means_chair: int
-    ways_means_vicechair: int
-    committee_chair_tier_a: int
-    committee_chair_tier_b: int
-    committee_vicechair: int
-    whip: int
-    asst_maj_whip: int
-    asst_min_whip: int
