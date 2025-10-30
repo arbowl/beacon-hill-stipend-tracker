@@ -24,6 +24,19 @@ import pandas as pd
 THRESHOLD_OK = 1500
 THRESHOLD_PARTIAL = 10000
 
+# Annualization detection thresholds
+# CTHRU data is typically through Oct 18 (~10.5 months), while model is annualized
+# If CTHRU is 75-90% of model, likely explanation is partial year rather than error
+ANNUALIZATION_MIN_PCT = 75
+ANNUALIZATION_MAX_PCT = 90
+
+# Investigation tier thresholds
+PARTIAL_YEAR_THRESHOLD = 50  # CTHRU < 50% suggests mid-year appointment
+LEADERSHIP_HIGH_THRESHOLD = 60  # For cases with high leadership stipends
+LEADERSHIP_LOW_THRESHOLD = 75
+OVERPAYMENT_THRESHOLD = 110  # CTHRU > 110% suggests payment timing issue
+HIGH_LEADERSHIP_STIPEND = 50000  # Threshold for "high" leadership compensation
+
 # Common nickname mappings (bidirectional)
 NICKNAME_MAP = {
     # Both directions to catch either format
@@ -550,20 +563,28 @@ def infer_year_from_csv(csv_path: str) -> int:
 def compute_variance_status(
     variance: float,
     cthru_total: float,
+    model_total: float,
     agency_count: int,
+    role_stipends_total: float = 0,
 ) -> str:
     """
     Determine variance status bucket using transparent,
     audit-friendly rules.
 
+    Enhanced to detect annualization patterns and specific investigation
+    tiers for better prioritization.
+
     Args:
         variance: model_total - cthru_total
         cthru_total: Total compensation from CTHRU
+        model_total: Total compensation from model (annualized)
         agency_count: Number of distinct agencies employee appears in
+        role_stipends_total: Total leadership/committee stipends
 
     Returns:
-        Status string: OK, PARTIAL_OR_ROLE_CHANGE, NO_MATCH,
-        or INVESTIGATE
+        Status string: OK, PARTIAL_OR_ROLE_CHANGE, LIKELY_ANNUALIZED,
+        INVESTIGATE_PARTIAL_YEAR, INVESTIGATE_LEADERSHIP,
+        INVESTIGATE_OVERPAYMENT, INVESTIGATE, or NO_MATCH
     """
     abs_var = abs(variance)
 
@@ -574,7 +595,31 @@ def compute_variance_status(
     elif abs_var < THRESHOLD_PARTIAL or agency_count > 1:
         return "PARTIAL_OR_ROLE_CHANGE"
     else:
-        return "INVESTIGATE"
+        # Large variance (≥ $10k) - check patterns
+        cthru_pct = (cthru_total / model_total) * 100 if model_total > 0 else 0
+
+        # If CTHRU is 75-90% of model, likely partial year rather than error
+        if ANNUALIZATION_MIN_PCT <= cthru_pct <= ANNUALIZATION_MAX_PCT:
+            return "LIKELY_ANNUALIZED"
+
+        # Tier 1: Very low CTHRU (< 50%) - likely mid-year appointment/data issue
+        elif cthru_pct < PARTIAL_YEAR_THRESHOLD:
+            return "INVESTIGATE_PARTIAL_YEAR"
+
+        # Tier 2: Overpayment (CTHRU > 110%) - payment timing issue
+        elif cthru_pct > OVERPAYMENT_THRESHOLD:
+            return "INVESTIGATE_OVERPAYMENT"
+
+        # Tier 3: High leadership with 60-75% CTHRU - irregular payment schedule
+        elif (
+            role_stipends_total >= HIGH_LEADERSHIP_STIPEND
+            and LEADERSHIP_HIGH_THRESHOLD <= cthru_pct < LEADERSHIP_LOW_THRESHOLD
+        ):
+            return "INVESTIGATE_LEADERSHIP"
+
+        # Everything else
+        else:
+            return "INVESTIGATE"
 
 
 def run_cthru_validation(
@@ -667,6 +712,14 @@ def run_cthru_validation(
     df["pct_diff"] = 100 * df["variance"] / df["cthru_total"].replace(
         0, 1
     )
+    
+    # Add annualization metrics
+    df["cthru_pct_of_model"] = (
+        df["cthru_total"] / df["total_comp"]
+    ).replace([float('inf'), -float('inf')], 0) * 100
+    df["months_equivalent"] = (
+        df["cthru_total"] / df["total_comp"]
+    ).replace([float('inf'), -float('inf')], 0) * 12
 
     # Add agency summary
     df["agencies_summary"] = df["name"].apply(
@@ -683,18 +736,48 @@ def run_cthru_validation(
         lambda row: compute_variance_status(
             row["variance"],
             row["cthru_total"],
+            row["total_comp"],
             row["agency_count"],
+            row.get("role_stipends_total", 0),
         ),
         axis=1,
     )
 
-    # 8. Export variance details CSV
+    # 8. Add human-readable explanations
+    def generate_explanation(row):
+        status = row["status"]
+        pct = row["cthru_pct_of_model"]
+        months = row["months_equivalent"]
+
+        if status == "OK":
+            return "Within acceptable variance range"
+        elif status == "PARTIAL_OR_ROLE_CHANGE":
+            return "Partial year, role change, or multi-agency employment"
+        elif status == "NO_MATCH":
+            return "No CTHRU record found"
+        elif status == "LIKELY_ANNUALIZED":
+            return f"Likely annualization: {months:.1f} months paid vs 12-month model"
+        elif status == "INVESTIGATE_PARTIAL_YEAR":
+            return f"🔴 HIGH PRIORITY: Very low CTHRU ({pct:.0f}%) - likely mid-year appointment or data issue"
+        elif status == "INVESTIGATE_OVERPAYMENT":
+            return f"⚠️ MEDIUM PRIORITY: CTHRU exceeds model ({pct:.0f}%) - check payment timing or multi-year adjustment"
+        elif status == "INVESTIGATE_LEADERSHIP":
+            leadership = row.get("role_stipends_total", 0)
+            return f"⚠️ MEDIUM PRIORITY: High leadership stipends (${leadership:,.0f}) at {pct:.0f}% - likely irregular payment schedule"
+        else:  # INVESTIGATE (catch-all)
+            return f"🔍 REVIEW NEEDED: Unexplained variance ({pct:.0f}% of model) - requires investigation"
+    
+    df["explanation"] = df.apply(generate_explanation, axis=1)
+    
+    # 9. Export variance details CSV
     output_cols = [
         "member_id", "name", "chamber", "district",
         "total_comp", "role_stipends_total", "expense_stipend",
         "base_salary",
         "cthru_total", "regular_pay", "other_pay",
-        "variance", "pct_diff", "status",
+        "variance", "pct_diff", 
+        "cthru_pct_of_model", "months_equivalent",
+        "status", "explanation",
         "agencies_summary",
     ]
 
@@ -707,7 +790,7 @@ def run_cthru_validation(
     df_export.to_csv(variance_path, index=False)
     print(f"\n  ✓ Wrote {variance_path}")
 
-    # 9. Compute aggregate metrics
+    # 10. Compute aggregate metrics
     status_counts = df["status"].value_counts().to_dict()
     rows_matched = len(df[df["cthru_total"] > 0])
 
@@ -728,7 +811,41 @@ def run_cthru_validation(
             "notes": row["agencies_summary"] or "No agency split",
         })
 
-    # 10. Build summary JSON
+    # 11. Chamber and role breakdowns
+    variance_by_chamber = {}
+    for chamber in ["House", "Senate"]:
+        chamber_df = df[df["chamber"] == chamber]
+        variance_by_chamber[chamber] = {
+            "total_members": int(len(chamber_df)),
+            "status_counts": chamber_df["status"].value_counts().to_dict(),
+            "median_variance": float(chamber_df["variance"].abs().median()),
+            "median_cthru_pct": float(chamber_df["cthru_pct_of_model"].median()),
+        }
+    
+    variance_by_role = {
+        "with_leadership": {},
+        "no_leadership": {},
+    }
+    for has_leadership, label in [(True, "with_leadership"), (False, "no_leadership")]:
+        role_df = df[df.get("has_stipend", False) == has_leadership] if "has_stipend" in df.columns else pd.DataFrame()
+        if len(role_df) > 0:
+            variance_by_role[label] = {
+                "count": int(len(role_df)),
+                "status_counts": role_df["status"].value_counts().to_dict(),
+                "median_variance": float(role_df["variance"].abs().median()),
+            }
+    
+    # Annualization analysis
+    investigate_df = df[df["status"] == "INVESTIGATE"]
+    annualized_df = df[df["status"] == "LIKELY_ANNUALIZED"]
+    annualization_analysis = {
+        "likely_annualized_count": int(len(annualized_df)),
+        "median_cthru_pct_all": float(df["cthru_pct_of_model"].median()),
+        "median_months_equivalent": float(df["months_equivalent"].median()),
+        "hypothesis": f"Median {df['months_equivalent'].median():.1f} months suggests partial year (CTHRU through Oct vs 12-month model)",
+    }
+    
+    # 12. Build summary JSON
     summary = {
         "year": year,
         "rows_model": len(df_model),
@@ -736,6 +853,9 @@ def run_cthru_validation(
         "status_counts": status_counts,
         "median_abs_variance": float(median_abs_var),
         "p90_abs_variance": float(p90_abs_var),
+        "variance_by_chamber": variance_by_chamber,
+        "variance_by_role": variance_by_role,
+        "annualization_analysis": annualization_analysis,
         "top_outliers": top_outliers,
         "notes": {
             "thresholds": {
@@ -744,8 +864,26 @@ def run_cthru_validation(
                     f"Variance < ${THRESHOLD_PARTIAL:,} OR "
                     "employee appears in >1 agency"
                 ),
+                "LIKELY_ANNUALIZED": (
+                    f"Variance ≥ ${THRESHOLD_PARTIAL:,} BUT "
+                    f"CTHRU is {ANNUALIZATION_MIN_PCT}-{ANNUALIZATION_MAX_PCT}% of model "
+                    "(partial year vs annualized model)"
+                ),
+                "INVESTIGATE_PARTIAL_YEAR": (
+                    f"🔴 HIGH PRIORITY: CTHRU < {PARTIAL_YEAR_THRESHOLD}% "
+                    "(likely mid-year appointment or data issue)"
+                ),
+                "INVESTIGATE_OVERPAYMENT": (
+                    f"⚠️ MEDIUM PRIORITY: CTHRU > {OVERPAYMENT_THRESHOLD}% "
+                    "(payment timing or multi-year adjustment)"
+                ),
+                "INVESTIGATE_LEADERSHIP": (
+                    f"⚠️ MEDIUM PRIORITY: High leadership stipends (≥${HIGH_LEADERSHIP_STIPEND:,}) "
+                    f"with CTHRU {LEADERSHIP_HIGH_THRESHOLD}-{LEADERSHIP_LOW_THRESHOLD}% "
+                    "(irregular payment schedule)"
+                ),
+                "INVESTIGATE": "🔍 Other unexplained variance requiring investigation",
                 "NO_MATCH": "No CTHRU record found for employee",
-                "INVESTIGATE": "Large unexplained variance",
             },
             "common_variance_reasons": [
                 "Partial year or chamber/role change "
