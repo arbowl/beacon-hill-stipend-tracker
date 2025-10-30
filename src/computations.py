@@ -55,6 +55,11 @@ def export_leadership_metrics(
         "Expense stipends = travel allowance based on distance "
         "from State House."
     )
+    # Get current expense band amounts from config
+    expense_bands = CYCLE_CONFIG.get("expense_bands", {})
+    le50_amount = expense_bands.get("LE50", 0)
+    gt50_amount = expense_bands.get("GT50", 0)
+
     metrics = {
         "members": len(rows),
         "members_with_leadership_stipends": len(leadership_recipients),
@@ -62,15 +67,17 @@ def export_leadership_metrics(
         "total_leadership_stipend_dollars": sum(role_sums),
         "total_expense_stipend_dollars": sum(expense_sums),
         "expense_stipend_breakdown": {
-            "le50_miles": {"count": le50_count, "amount": 15000},
-            "gt50_miles": {"count": gt50_count, "amount": 20000}
+            "le50_miles": {"count": le50_count, "amount": le50_amount},
+            "gt50_miles": {"count": gt50_count, "amount": gt50_amount}
         },
         "median_total_comp": median(totals) if totals else None,
         "top10_avg_total_comp": top10_avg,
         "generated_at": date.today().isoformat(),
         "notes": notes
     }
-    Path(path).write_text(json.dumps(metrics, indent=2))
+    Path(path).write_text(
+        json.dumps(metrics, indent=2), encoding="utf-8"
+    )
     print(f"[ok] Wrote {path}")
 
 
@@ -124,7 +131,8 @@ def compute_totals(
             band_source = "DISTRICT_CENTROID"
         else:
             band_source = None
-        clean_locality = None if band_source == "DISTRICT_CENTROID" else locality
+        is_centroid = band_source == "DISTRICT_CENTROID"
+        clean_locality = None if is_centroid else locality
         expense = CYCLE_CONFIG["expense_bands"].get(band, 0) if band else 0
         base = int(CYCLE_CONFIG["base_salary"])
         total = base + expense + role_total
