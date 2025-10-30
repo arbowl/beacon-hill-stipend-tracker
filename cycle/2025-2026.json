@@ -1,0 +1,114 @@
+{
+  "cycle": "2025-2026",
+  "effective_date": "2025-01-01",
+
+  "authority": {
+    "base_adjustment": "Mass. Constitution Article CXVIII (median household income, biennial)",
+    "stipends_and_expenses": "Applied by practice to M.G.L. c.3 §9B (stipends) and §9C (expense allowances)"
+  },
+
+  "adjustment_history": [
+    {
+      "year": 2019,
+      "percent": 5.93,
+      "factor": 1.0593,
+      "notes": "First biennial adjustment after 2017 statutory baseline"
+    },
+    {
+      "year": 2021,
+      "percent": 6.46,
+      "factor": 1.0646,
+      "notes": "Second biennial adjustment"
+    },
+    {
+      "year": 2023,
+      "percent": 4.41,
+      "factor": 1.0441,
+      "notes": "Third biennial adjustment"
+    },
+    {
+      "year": 2025,
+      "percent": 11.39,
+      "factor": 1.1139,
+      "announced_by": "Governor / Administration & Finance",
+      "announced_on": "2025-01-02",
+      "sources": [
+        "Governor/A&F biennial pay announcement (Jan 2025)",
+        "Press coverage (e.g., SHNS/Globe/GBH), Jan 2025"
+      ]
+    }
+  ],
+
+  "cumulative_adjustment": {
+    "factor": 1.3116,
+    "percent": 31.16,
+    "calculation": "1.0593 × 1.0646 × 1.0441 × 1.1139 = 1.3116",
+    "applies_to": {
+      "base_salary": true,
+      "expense_bands": true,
+      "stipends": true
+    },
+    "rounding": "nearest_dollar",
+    "notes": "Cumulative adjustment from 2017 baseline to 2025-2026 cycle"
+  },
+
+  "amounts_nominal_2017": {
+    "base_salary": 62548,
+    "expense_bands": {
+      "LE50": 15000,
+      "GT50": 20000,
+      "notes": "Distance from State House (Boston) ≤50 miles vs >50 miles - see M.G.L. c.3 §9C"
+    },
+    "stipends": {
+      "SPEAKER": 72000,
+      "SENATE_PRESIDENT": 72000,
+      "MAJORITY_LEADER": 60000,
+      "MINORITY_LEADER": 60000,
+      "PRESIDENT_PRO_TEMPORE": 45000,
+      "SPEAKER_PRO_TEMPORE": 45000,
+      "WAYS_MEANS_CHAIR": 60000,
+      "WAYS_MEANS_VICECHAIR": 14000,
+      "COMMITTEE_CHAIR_TIER_A": 27000,
+      "COMMITTEE_CHAIR_TIER_B": 13500,
+      "COMMITTEE_VICECHAIR_TIER_A": 4700,
+      "COMMITTEE_VICECHAIR_TIER_B": 4700,
+      "WHIP": 30000,
+      "ASST_MAJ_WHIP": 30000,
+      "ASST_MIN_WHIP": 30000
+    },
+    "notes": "These are the statutory base values established in 2017 per M.G.L. c.3 §9B-9C; apply cumulative_adjustment.factor to compute current-cycle amounts."
+  },
+
+  "tier_a_committees": [
+    "House Committee on Ways and Means",
+    "Senate Committee on Ways and Means",
+    "House Committee on Rules",
+    "Senate Committee on Rules",
+    "Joint Committee on Rules",
+    "House Committee on Steering, Policy and Scheduling",
+    "Senate Committee on Steering and Policy",
+    "House Committee on Bonding, Capital Expenditures and State Assets",
+    "Senate Committee on Bonding, Capital Expenditures and State Assets",
+    "Joint Committee on Ethics",
+    "Joint Committee on Global Warming and Climate Change",
+    "Joint Committee on Health Care Financing",
+    "Joint Committee on Post Audit and Oversight",
+    "Joint Committee on Revenue",
+    "Joint Committee on Transportation"
+  ],
+
+  "validation": {
+    "last_updated": "2025-10-30",
+    "verified_against": [
+      "https://malegislature.gov/Laws/GeneralLaws/PartI/TitleI/Chapter3/Section9B",
+      "https://malegislature.gov/Laws/GeneralLaws/PartI/TitleI/Chapter3/Section9C",
+      "Mass. Constitution, Art. CXVIII"
+    ],
+    "computed_2025_examples": {
+      "base_salary": "62548 × 1.3116 = 82,036",
+      "speaker_stipend": "72000 × 1.3116 = 94,433",
+      "committee_chair_tier_a": "27000 × 1.3116 = 35,413"
+    },
+    "notes": "Store nominal 2017 values; apply cumulative_adjustment.factor to compute current-cycle amounts. All amounts round to nearest dollar."
+  }
+}
