@@ -13,10 +13,7 @@ import urllib.request
 from typing import Optional
 from sys import stderr
 
-try:
-    from bs4 import BeautifulSoup
-except ImportError:
-    BeautifulSoup = None
+from bs4 import BeautifulSoup
 
 
 def _fetch_html(url: str, max_retries: int = 3) -> Optional[str]:

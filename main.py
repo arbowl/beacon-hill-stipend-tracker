@@ -19,8 +19,6 @@ Outputs:
 
 from __future__ import annotations
 
-import csv
-from pathlib import Path
 from time import sleep
 from textwrap import dedent
 
@@ -35,118 +33,13 @@ from src.fetchers import (
     fetch_committee_detail,
 )
 from src.helpers import (
-    map_committee_role,
     list_members,
+    map_committee_role,
+    show_visualization_menu,
+    export_csv
 )
 from src.models import CYCLE_CONFIG
-from src.visualizations import (
-    DataContext,
-    discover_visualizations,
-    get_visualizations_by_category,
-)
-
-
-def export_csv(
-    rows: list[dict], output_path: str = "out/members.csv"
-):
-    """Export member compensation data to CSV file."""
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-
-    cols = [
-        "member_id", "name", "chamber", "district", "party",
-        "home_locality", "distance_miles", "distance_band",
-        "band_source", "base_salary", "expense_stipend",
-        "role_1", "role_1_stipend", "role_2", "role_2_stipend",
-        "role_stipends_total", "total_comp", "has_stipend",
-        "payroll_actual_sample", "variance_vs_actual_sample",
-        "last_updated",
-    ]
-
-    with open(output_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(
-            f, fieldnames=cols, extrasaction="ignore"
-        )
-        writer.writeheader()
-        writer.writerows(rows)
-
-    print(f"\n[ok] Exported {len(rows)} members to {output_path}")
-
-    # Also print a preview
-    print("\nPreview (first 10 rows):")
-    for r in rows[:10]:
-        mid = str(r.get("member_id") or "")
-        name = str(r.get("name") or "")
-        chamber = str(r.get("chamber") or "")
-        band = str(r.get("distance_band") or "")
-        role_sum = r.get("role_stipends_total") or 0
-        total = r.get("total_comp") or 0
-        print(
-            f"{mid:>6} | {name:<28} | {chamber:<6} | "
-            f"band={band:<5} | roleΣ=${role_sum:<7,} | "
-            f"total=${total:,}"
-        )
-
-
-def show_visualization_menu(context: DataContext) -> None:
-    """Display interactive menu for running visualizations."""
-    
-    visualizations = discover_visualizations()
-    by_category = get_visualizations_by_category()
-    
-    if not visualizations:
-        print("\nNo visualizations available.")
-        return
-    
-    while True:
-        print("\n" + "=" * 80)
-        print("VISUALIZATION MENU")
-        print("=" * 80)
-        print("\nAvailable analyses:\n")
-        
-        # Build a numbered list of all visualizations, grouped by category
-        viz_list = []
-        for category in sorted(by_category.keys()):
-            print(f"  {category}:")
-            for viz_class in by_category[category]:
-                viz_list.append(viz_class)
-                num = len(viz_list)
-                print(f"    [{num}] {viz_class.name}")
-                print(f"        {viz_class.description}")
-            print()
-        
-        print("  [A] Run all visualizations")
-        print("  [Q] Quit to exit\n")
-
-        prompt = "Select a visualization (number, 'A', or 'Q'): "
-        choice = input(prompt).strip().upper()
-        
-        if choice == 'Q':
-            print("\nExiting visualization menu.")
-            break
-        elif choice == 'A':
-            print("\nRunning all visualizations...\n")
-            for viz_class in viz_list:
-                try:
-                    viz = viz_class()
-                    viz.run(context)
-                except Exception as exc:
-                    print(f"Error running {viz_class.name}: {exc}\n")
-            input("\nPress Enter to return to menu...")
-        else:
-            try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(viz_list):
-                    viz_class = viz_list[idx]
-                    try:
-                        viz = viz_class()
-                        viz.run(context)
-                    except Exception as exc:
-                        print(f"Error running {viz_class.name}: {exc}\n")
-                    input("\nPress Enter to return to menu...")
-                else:
-                    print("Invalid selection. Please try again.")
-            except ValueError:
-                print("Invalid input. Please enter a number, 'A', or 'Q'.")
+from src.visualizations import DataContext
 
 
 def main() -> None:
