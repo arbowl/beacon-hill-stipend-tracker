@@ -11,14 +11,51 @@ STATE_HOUSE_LATLON: tuple[float, float] = (42.3570, -71.0630)
 
 
 def load_cycle_config(cycle: str = "2025-2026") -> dict:
-    """Load cycle configuration from JSON file."""
+    """
+    Load cycle configuration from JSON file.
+
+    Computes adjusted amounts by applying the cumulative adjustment factor
+    to the nominal 2017 base values. The adjusted values are stored in the
+    config dict under the original keys for backward compatibility.
+    """
     config_path = (
         Path(__file__).parent.parent / "data" / "cycle" / f"{cycle}.json"
     )
     if not config_path.exists():
         raise FileNotFoundError(f"Cycle config not found: {config_path}")
+
     with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        config = json.load(f)
+
+    # Extract adjustment factor and nominal base values
+    cumulative = config.get("cumulative_adjustment", {})
+    cumulative_factor = cumulative.get("factor", 1.0)
+    nominal = config.get("amounts_nominal_2017", {})
+
+    # Compute adjusted base salary
+    base_nominal = nominal.get("base_salary", 0)
+    config["base_salary"] = round(base_nominal * cumulative_factor)
+
+    # Compute adjusted expense bands
+    expense_nominal = nominal.get("expense_bands", {})
+    config["expense_bands"] = {
+        "LE50": round(expense_nominal.get("LE50", 0) * cumulative_factor),
+        "GT50": round(expense_nominal.get("GT50", 0) * cumulative_factor),
+        "notes": expense_nominal.get("notes", "")
+    }
+
+    # Compute adjusted stipends
+    stipends_nominal = nominal.get("stipends", {})
+    config["stipends"] = {
+        role: round(amount * cumulative_factor)
+        for role, amount in stipends_nominal.items()
+        if isinstance(amount, (int, float))
+    }
+    # Preserve the notes field if present
+    if "notes" in stipends_nominal:
+        config["stipends"]["notes"] = stipends_nominal["notes"]
+
+    return config
 
 
 # Load the current cycle configuration

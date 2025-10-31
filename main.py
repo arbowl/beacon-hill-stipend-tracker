@@ -23,6 +23,7 @@ from time import sleep
 from textwrap import dedent
 
 from src.computations import compute_totals, export_leadership_metrics
+from src.validate import run_cthru_validation
 from src.fetchers import (
     pick_session,
     get_gc_number,
@@ -195,14 +196,35 @@ def main() -> None:
     export_csv(rows)
     export_leadership_metrics(rows)
 
+    # 7. Run CTHRU validation
+    try:
+        resp = run_cthru_validation(
+            cthru_csv_url=(
+                "https://cthru.data.socrata.com/resource/"
+                "9ttk-7vz6.csv"
+            ),
+            members_csv_path="out/members.csv",
+            year=None  # infer from last_updated
+        )
+        print(
+            f"\n[CTHRU] {resp['rows_matched']}/"
+            f"{resp['rows_model']} matched; "
+            f"status: {resp['status_counts']}"
+        )
+    except Exception as e:
+        print(f"\n[CTHRU] Validation failed: {e}")
+        print("Continuing without CTHRU validation...")
+
     print("\n" + "=" * 60)
     print("✓ Pipeline complete!")
     print("\nOutputs:")
     print("  - out/members.csv (per-member compensation)")
     print("  - out/leadership_power.json (aggregate metrics)")
+    print("  - out/cthru_variances.csv (CTHRU validation details)")
+    print("  - out/cthru_summary.json (CTHRU validation summary)")
     print("=" * 60)
     
-    # 7. Interactive visualization menu
+    # 8. Interactive visualization menu
     print("\n" + "=" * 60)
     print("Data fetching complete! You can now run visualizations.")
     print("=" * 60)
