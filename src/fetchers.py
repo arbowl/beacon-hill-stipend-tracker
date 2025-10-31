@@ -167,7 +167,7 @@ def fetch_committee_detail(
     gc_number: int,
     committee_code: str,
     base_url: str = "https://malegislature.gov"
-) -> Optional[dict]:
+) -> Optional[dict[str, str | dict[str, str]]]:
     """
     Fetch committee detail from API and scrape vice chair information.
 
