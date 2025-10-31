@@ -1,8 +1,12 @@
+"""Visualization comparing travel expense stipends vs leadership stipends."""
+
 from statistics import mean, median
 from src.visualizations.base import Visualization, DataContext
 
 
 class StipendTypeComparison(Visualization):
+    """Visualization comparing travel expense stipends vs leadership stipends."""
+
     name = "Expense vs Leadership Stipends"
     description = "Compare travel expense stipends vs leadership stipends"
     category = "Comparison"

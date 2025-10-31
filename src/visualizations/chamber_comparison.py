@@ -1,8 +1,14 @@
+"""Visualization comparing compensation metrics between House and Senate members."""
+
 from statistics import mean, median
 from src.visualizations.base import Visualization, DataContext
 
 
 class ChamberComparisonAnalysis(Visualization):
+    """Visualization comparing compensation metrics between House and Senate
+    members.
+    """
+
     name = "House vs Senate Comparison"
     description = "Compare compensation metrics between chambers"
     category = "Comparison"

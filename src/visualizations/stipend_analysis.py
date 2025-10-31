@@ -1,7 +1,11 @@
+"""Visualizations analyzing leadership/committee stipends among legislators."""
+
 from src.visualizations.base import Visualization, DataContext
 
 
 class TopStipendEarners(Visualization):
+    """Visualization listing members with highest leadership/committee stipends."""
+
     name = "Top Leadership Stipend Earners"
     description = "Show members with highest leadership/committee stipends"
     category = "Analysis"
@@ -67,6 +71,8 @@ class TopStipendEarners(Visualization):
 
 
 class StipendDistribution(Visualization):
+    """Visualization showing distribution of leadership stipends among members."""
+
     name = "Leadership Stipend Distribution"
     description = "Breakdown of who has leadership stipends vs. who doesn't"
     category = "Analysis"

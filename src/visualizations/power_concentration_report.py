@@ -1,5 +1,4 @@
-"""
-Power Concentration Report - Comprehensive stipend inequality analysis.
+"""Power Concentration Report - Comprehensive stipend inequality analysis.
 
 Generates a multi-section report quantifying leadership-controlled stipend
 distribution, concentration metrics, and geographic equity across the
@@ -14,6 +13,7 @@ Outputs:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from datetime import datetime
 from statistics import mean, median
@@ -44,6 +44,8 @@ from src.models import CYCLE_CONFIG, STATE_HOUSE_LATLON
 
 
 class PowerConcentrationReport(Visualization):
+    """Comprehensive stipend inequality & geographic equity analysis."""
+
     name = "Power Concentration Report"
     description = (
         "Comprehensive inequality & geographic equity analysis (HTML/PDF)"
@@ -61,21 +63,13 @@ class PowerConcentrationReport(Visualization):
         print("=" * 80)
         print("Generating comprehensive stipend inequality analysis...")
         print()
-
-        # Calculate all metrics
         metrics = self._calculate_metrics(context)
-
-        # Generate narrative
         narrative = self._generate_narrative(metrics)
-
-        # Create visualizations
         print("Creating visualizations...")
         fig_lorenz = self._create_lorenz_curve(metrics)
         fig_geo = self._create_geographic_map(context, metrics)
         fig_hierarchy = self._create_hierarchy_sankey(context, metrics)
         fig_kpis = self._create_kpi_dashboard(metrics)
-
-        # Combine into single HTML report
         print("Assembling HTML report...")
         self._export_html(
             narrative,
@@ -85,18 +79,13 @@ class PowerConcentrationReport(Visualization):
             fig_kpis,
             metrics
         )
-
-        # Export data JSON
         print("Exporting data...")
         self._export_json(metrics)
-
-        # Generate PDF if available
         if REPORTLAB_AVAILABLE:
             print("Generating PDF report...")
             self._export_pdf(narrative, metrics)
         else:
             print("(Skipping PDF - reportlab not available)")
-
         print("\n" + "=" * 80)
         print("✓ Report generation complete!")
         print()
@@ -113,51 +102,35 @@ class PowerConcentrationReport(Visualization):
     def _calculate_metrics(self, context: DataContext) -> dict:
         """Calculate all concentration and inequality metrics."""
         rows = context.computed_rows
-
-        # Basic counts
         total_members = len(rows)
         with_leadership = [
             r for r in rows if r.get("role_stipends_total", 0) > 0
         ]
-
-        # Stipend totals
         leadership_stipends = [
             r.get("role_stipends_total", 0) for r in rows
         ]
         expense_stipends = [r.get("expense_stipend", 0) for r in rows]
         total_comp = [r.get("total_comp", 0) for r in rows]
-
-        # Sort for concentration analysis
         leadership_sorted = sorted(leadership_stipends, reverse=True)
         comp_sorted = sorted(total_comp, reverse=True)
-
-        # Calculate Gini coefficient for total compensation
         gini = self._calculate_gini(total_comp)
-
-        # Calculate Gini for leadership stipends (non-zero only)
         leadership_nonzero = [s for s in leadership_stipends if s > 0]
         if leadership_nonzero:
             gini_leadership = self._calculate_gini(leadership_nonzero)
         else:
             gini_leadership = 0
-
-        # Top N shares
         total_leadership = sum(leadership_stipends)
         total_expense = sum(expense_stipends)
         total_all_comp = sum(total_comp)
-
         top10_leadership = sum(leadership_sorted[:10])
         top20_leadership = sum(leadership_sorted[:20])
         top10_comp = sum(comp_sorted[:10])
-
-        # Percentages
         if total_members:
             pct_with_leadership = (
                 len(with_leadership) / total_members * 100
             )
         else:
             pct_with_leadership = 0
-
         if total_leadership:
             pct_top10_leadership = (
                 top10_leadership / total_leadership * 100
@@ -168,13 +141,10 @@ class PowerConcentrationReport(Visualization):
         else:
             pct_top10_leadership = 0
             pct_top20_leadership = 0
-
         if total_all_comp:
             pct_top10_comp = top10_comp / total_all_comp * 100
         else:
             pct_top10_comp = 0
-
-        # Median vs mean gaps
         median_comp = median(total_comp) if total_comp else 0
         mean_comp = mean(total_comp) if total_comp else 0
         if leadership_nonzero:
@@ -183,13 +153,10 @@ class PowerConcentrationReport(Visualization):
         else:
             median_leadership = 0
             mean_leadership = 0
-
-        # Chamber breakdown
         house_members = [r for r in rows if r.get("chamber") == "House"]
         senate_members = [
             r for r in rows if r.get("chamber") == "Senate"
         ]
-
         house_with_leadership = [
             r for r in house_members
             if r.get("role_stipends_total", 0) > 0
@@ -198,56 +165,46 @@ class PowerConcentrationReport(Visualization):
             r for r in senate_members
             if r.get("role_stipends_total", 0) > 0
         ]
-
         house_leadership_total = sum(
             r.get("role_stipends_total", 0) for r in house_members
         )
         senate_leadership_total = sum(
             r.get("role_stipends_total", 0) for r in senate_members
         )
-
         if house_members:
             house_avg_comp = mean(
                 [r.get("total_comp", 0) for r in house_members]
             )
         else:
             house_avg_comp = 0
-
         if senate_members:
             senate_avg_comp = mean(
                 [r.get("total_comp", 0) for r in senate_members]
             )
         else:
             senate_avg_comp = 0
-
-        # Leadership vs expense ratio
         if total_expense > 0:
             leadership_expense_ratio = total_leadership / total_expense
         else:
             leadership_expense_ratio = 0
-
-        # Distance-based equity
         distant_members = [
             r for r in rows if r.get("distance_miles", 0) > 50
         ]
         close_members = [
             r for r in rows if r.get("distance_miles", 0) <= 50
         ]
-
         if distant_members:
             distant_avg_comp = mean(
                 [r.get("total_comp", 0) for r in distant_members]
             )
         else:
             distant_avg_comp = 0
-
         if close_members:
             close_avg_comp = mean(
                 [r.get("total_comp", 0) for r in close_members]
             )
         else:
             close_avg_comp = 0
-
         if distant_members:
             distant_leadership_pct = (
                 len([
@@ -258,7 +215,6 @@ class PowerConcentrationReport(Visualization):
             )
         else:
             distant_leadership_pct = 0
-
         if close_members:
             close_leadership_pct = (
                 len([
@@ -269,30 +225,21 @@ class PowerConcentrationReport(Visualization):
             )
         else:
             close_leadership_pct = 0
-
-        # Top earners details
         top_earners_list = sorted(
             rows,
             key=lambda r: r.get("total_comp", 0),
             reverse=True
         )[:10]
-
         return {
             "timestamp": datetime.now().isoformat(),
             "cycle": CYCLE_CONFIG.get("cycle", "N/A"),
             "base_salary": CYCLE_CONFIG.get("base_salary", 0),
-
-            # Counts
             "total_members": total_members,
             "members_with_leadership_stipends": len(with_leadership),
             "pct_with_leadership_stipends": pct_with_leadership,
-
-            # Totals
             "total_leadership_stipends": total_leadership,
             "total_expense_stipends": total_expense,
             "total_all_compensation": total_all_comp,
-
-            # Concentration metrics
             "gini_coefficient": gini,
             "gini_leadership": gini_leadership,
             "top10_leadership_share": pct_top10_leadership,
@@ -300,15 +247,11 @@ class PowerConcentrationReport(Visualization):
             "top10_comp_share": pct_top10_comp,
             "top10_leadership_dollars": top10_leadership,
             "top10_comp_dollars": top10_comp,
-
-            # Central tendency
             "median_total_comp": median_comp,
             "mean_total_comp": mean_comp,
             "median_leadership_stipend": median_leadership,
             "mean_leadership_stipend": mean_leadership,
             "median_mean_gap": mean_comp - median_comp,
-
-            # Chamber disparity
             "house_count": len(house_members),
             "senate_count": len(senate_members),
             "house_with_leadership": len(house_with_leadership),
@@ -318,11 +261,7 @@ class PowerConcentrationReport(Visualization):
             "house_avg_comp": house_avg_comp,
             "senate_avg_comp": senate_avg_comp,
             "chamber_avg_gap": senate_avg_comp - house_avg_comp,
-
-            # Leadership vs expense
             "leadership_expense_ratio": leadership_expense_ratio,
-
-            # Geographic equity
             "distant_members_count": len(distant_members),
             "close_members_count": len(close_members),
             "distant_avg_comp": distant_avg_comp,
@@ -330,8 +269,6 @@ class PowerConcentrationReport(Visualization):
             "distant_leadership_pct": distant_leadership_pct,
             "close_leadership_pct": close_leadership_pct,
             "geographic_comp_gap": close_avg_comp - distant_avg_comp,
-
-            # Top earners
             "top_earners": [
                 {
                     "name": r.get("name", "Unknown"),
@@ -349,8 +286,6 @@ class PowerConcentrationReport(Visualization):
                 }
                 for r in top_earners_list
             ],
-
-            # For visualizations
             "leadership_stipends_array": leadership_stipends,
             "total_comp_array": total_comp,
             "rows": rows,
@@ -363,13 +298,10 @@ class PowerConcentrationReport(Visualization):
         """
         if not values or len(values) == 0:
             return 0.0
-
         sorted_values = np.sort(np.array(values))
         n = len(sorted_values)
-
         if sorted_values.sum() == 0:
             return 0.0
-
         cumsum = np.cumsum(sorted_values)
         numerator = (
             2 * np.sum((np.arange(n) + 1) * sorted_values) -
@@ -379,24 +311,16 @@ class PowerConcentrationReport(Visualization):
 
     def _create_lorenz_curve(self, metrics: dict) -> go.Figure:
         """Create Lorenz curve showing stipend concentration."""
-        # Get leadership stipends only (non-zero)
         stipends = [
             s for s in metrics["leadership_stipends_array"] if s > 0
         ]
         stipends_sorted = np.sort(stipends)
-
         n = len(stipends_sorted)
         cumulative_stipends = np.cumsum(stipends_sorted)
         total = cumulative_stipends[-1] if n > 0 else 1
-
-        # Calculate cumulative percentages
         pop_pct = np.arange(1, n + 1) / n * 100
         stipend_pct = cumulative_stipends / total * 100
-
-        # Create figure
         fig = go.Figure()
-
-        # Perfect equality line
         fig.add_trace(go.Scatter(
             x=[0, 100],
             y=[0, 100],
@@ -405,8 +329,6 @@ class PowerConcentrationReport(Visualization):
             line=dict(color='gray', dash='dash'),
             hoverinfo='skip'
         ))
-
-        # Lorenz curve
         fig.add_trace(go.Scatter(
             x=np.concatenate([[0], pop_pct]),
             y=np.concatenate([[0], stipend_pct]),
@@ -420,8 +342,6 @@ class PowerConcentrationReport(Visualization):
                 'Control %{y:.1f}% of stipends<extra></extra>'
             )
         ))
-
-        # Add markers for top 10
         if n >= 10:
             top10_idx = n - 10
             top10_share = metrics["top10_leadership_share"]
@@ -439,12 +359,10 @@ class PowerConcentrationReport(Visualization):
                     '<extra></extra>'
                 )
             ))
-
         top10_text = (
             f"Top 10 control {metrics['top10_leadership_share']:.1f}%"
             " of stipends"
         )
-
         fig.update_layout(
             title=dict(
                 text=(
@@ -475,7 +393,6 @@ class PowerConcentrationReport(Visualization):
                 )
             ]
         )
-
         return fig
 
     def _create_geographic_map(
@@ -485,23 +402,17 @@ class PowerConcentrationReport(Visualization):
     ) -> go.Figure:
         """Create choropleth map showing geographic compensation."""
         try:
-            # Load district centroids
             centroids_path = Path("data/district_centroids.json")
             with open(centroids_path, encoding='utf-8') as f:
                 centroids_data = json.load(f)
-
-            # Prepare data for mapping
             map_data = []
             for row in metrics["rows"]:
                 district = row.get("district", "")
                 chamber = row.get("chamber", "")
-
-                # Get centroid coordinates
                 coords = None
                 if (chamber in centroids_data and
                         district in centroids_data[chamber]):
                     coords = centroids_data[chamber][district]
-
                 if coords:
                     stipend_above_base = (
                         row.get("total_comp", 0) -
@@ -518,18 +429,12 @@ class PowerConcentrationReport(Visualization):
                         "role_stipend": row.get("role_stipends_total", 0),
                         "expense_stipend": row.get("expense_stipend", 0),
                     })
-
-            # Create scatter map
             fig = go.Figure()
-
-            # Color scale based on stipend above base
             stipend_values = [d["stipend_above_base"] for d in map_data]
-
             marker_sizes = [
                 min(max(d["stipend_above_base"] / 3000, 5), 30)
                 for d in map_data
             ]
-
             fig.add_trace(go.Scattergeo(
                 lon=[d["lon"] for d in map_data],
                 lat=[d["lat"] for d in map_data],
@@ -537,7 +442,7 @@ class PowerConcentrationReport(Visualization):
                 marker=dict(
                     size=marker_sizes,
                     color=stipend_values,
-                    colorscale='RdYlGn_r',  # Red = high, Green = low
+                    colorscale='RdYlGn_r',
                     cmin=min(stipend_values),
                     cmax=max(stipend_values),
                     colorbar=dict(
@@ -567,8 +472,6 @@ class PowerConcentrationReport(Visualization):
                     'Distance: %{customdata[4]:.1f} mi<extra></extra>'
                 )
             ))
-
-            # Add State House marker
             fig.add_trace(go.Scattergeo(
                 lon=[STATE_HOUSE_LATLON[1]],
                 lat=[STATE_HOUSE_LATLON[0]],
@@ -585,7 +488,6 @@ class PowerConcentrationReport(Visualization):
                 hoverinfo='text',
                 hovertext='Massachusetts State House<br>Boston, MA'
             ))
-
             fig.update_geos(
                 scope='usa',
                 center=dict(lat=42.3, lon=-71.8),
@@ -596,7 +498,6 @@ class PowerConcentrationReport(Visualization):
                 showlakes=True,
                 lakecolor='rgb(230, 240, 255)',
             )
-
             fig.update_layout(
                 title=dict(
                     text=(
@@ -608,12 +509,9 @@ class PowerConcentrationReport(Visualization):
                 height=600,
                 showlegend=False,
             )
-
             return fig
-
         except Exception as e:
             print(f"Warning: Could not create geographic map: {e}")
-            # Return empty figure with error message
             fig = go.Figure()
             fig.add_annotation(
                 text=(
@@ -635,19 +533,12 @@ class PowerConcentrationReport(Visualization):
         metrics: dict
     ) -> go.Figure:
         """Create Sankey diagram showing compensation flow."""
-        # Build hierarchy: All Legislators → Leadership/No Leadership
-        # → Specific Roles
-
-        # Nodes
         nodes = ["All Legislators", "With Leadership", "No Leadership"]
         node_colors = ['lightblue', 'lightcoral', 'lightgray']
-
-        # Track role categories
         role_categories = {}
         for row in metrics["rows"]:
             role1 = row.get("role_1", "")
             if role1:
-                # Simplify role names for display
                 role_cat = self._simplify_role(role1)
                 if role_cat not in role_categories:
                     role_categories[role_cat] = 0
@@ -655,8 +546,6 @@ class PowerConcentrationReport(Visualization):
                     "role_stipends_total",
                     0
                 )
-
-        # Add top role categories as nodes (limit to top 8)
         top_roles = sorted(
             role_categories.items(),
             key=lambda x: x[1],
@@ -665,14 +554,10 @@ class PowerConcentrationReport(Visualization):
         for role, _ in top_roles:
             nodes.append(role)
             node_colors.append('lightyellow')
-
-        # Build links
         source = []
         target = []
         value = []
         link_colors = []
-
-        # All → With/Without Leadership
         with_leadership_total = sum(
             r.get("total_comp", 0) for r in metrics["rows"]
             if r.get("role_stipends_total", 0) > 0
@@ -681,23 +566,18 @@ class PowerConcentrationReport(Visualization):
             r.get("total_comp", 0) for r in metrics["rows"]
             if r.get("role_stipends_total", 0) == 0
         )
-
         source.append(0)  # All Legislators
         target.append(1)  # With Leadership
         value.append(with_leadership_total)
         link_colors.append('rgba(255, 182, 193, 0.4)')
-
         source.append(0)  # All Legislators
         target.append(2)  # No Leadership
         value.append(without_leadership_total)
         link_colors.append('rgba(211, 211, 211, 0.4)')
-
-        # With Leadership → Specific Roles
         role_node_map = {
             role: idx + 3
             for idx, (role, _) in enumerate(top_roles)
         }
-
         role_totals = {role: 0 for role, _ in top_roles}
         for row in metrics["rows"]:
             role1 = row.get("role_1", "")
@@ -705,15 +585,12 @@ class PowerConcentrationReport(Visualization):
                 role_cat = self._simplify_role(role1)
                 if role_cat in role_totals:
                     role_totals[role_cat] += row.get("total_comp", 0)
-
         for role, total in role_totals.items():
             if total > 0:
                 source.append(1)  # With Leadership
                 target.append(role_node_map[role])
                 value.append(total)
                 link_colors.append('rgba(255, 255, 224, 0.4)')
-
-        # Create Sankey
         fig = go.Figure(data=[go.Sankey(
             node=dict(
                 pad=15,
@@ -729,7 +606,6 @@ class PowerConcentrationReport(Visualization):
                 color=link_colors
             )
         )])
-
         fig.update_layout(
             title=dict(
                 text='Compensation Flow Through Leadership Hierarchy',
@@ -738,13 +614,11 @@ class PowerConcentrationReport(Visualization):
             height=600,
             font=dict(size=12)
         )
-
         return fig
 
     def _simplify_role(self, role: str) -> str:
         """Simplify role names for display."""
         role_upper = role.upper()
-
         if "SPEAKER" in role_upper:
             return "Speaker/President"
         elif "WAYS" in role_upper and "MEANS" in role_upper:
@@ -764,7 +638,6 @@ class PowerConcentrationReport(Visualization):
 
     def _create_kpi_dashboard(self, metrics: dict) -> go.Figure:
         """Create KPI dashboard with key metrics."""
-        # Create subplot with KPI cards
         fig = make_subplots(
             rows=2,
             cols=4,
@@ -783,11 +656,8 @@ class PowerConcentrationReport(Visualization):
             vertical_spacing=0.25,
             horizontal_spacing=0.15
         )
-
-        # Row 1, Col 1: Gini Coefficient
         gini = metrics["gini_coefficient"]
         bar_color = 'darkred' if gini > 0.5 else 'orange'
-
         fig.add_trace(go.Indicator(
             mode="gauge+number",
             value=gini,
@@ -818,8 +688,6 @@ class PowerConcentrationReport(Visualization):
             },
             domain={'x': [0.15, 0.85], 'y': [0.35, 0.65]}
         ), row=1, col=1)
-
-        # Row 1, Col 2: Top 10 Share
         fig.add_trace(go.Indicator(
             mode="number+delta",
             value=metrics["top10_leadership_share"],
@@ -831,8 +699,6 @@ class PowerConcentrationReport(Visualization):
             number={'suffix': '%', 'font': {'size': 48}},
             domain={'x': [0, 1], 'y': [0, 1]}
         ), row=1, col=2)
-
-        # Row 1, Col 3: Median vs Mean Gap
         fig.add_trace(go.Indicator(
             mode="number",
             value=metrics["median_mean_gap"],
@@ -843,8 +709,6 @@ class PowerConcentrationReport(Visualization):
             },
             domain={'x': [0, 1], 'y': [0, 1]}
         ), row=1, col=3)
-
-        # Row 1, Col 4: Leadership vs Expense Ratio
         fig.add_trace(go.Indicator(
             mode="number",
             value=metrics["leadership_expense_ratio"],
@@ -855,8 +719,6 @@ class PowerConcentrationReport(Visualization):
             },
             domain={'x': [0, 1], 'y': [0, 1]}
         ), row=1, col=4)
-
-        # Row 2, Col 1: Chamber Disparity
         fig.add_trace(go.Indicator(
             mode="number+delta",
             value=metrics["senate_avg_comp"],
@@ -873,11 +735,8 @@ class PowerConcentrationReport(Visualization):
             title={'text': 'Senate Avg'},
             domain={'x': [0, 1], 'y': [0, 1]}
         ), row=2, col=1)
-
-        # Row 2, Col 2: Geographic Gap
         geo_gap = metrics["geographic_comp_gap"]
         geo_color = 'darkred' if geo_gap > 0 else 'darkgreen'
-
         fig.add_trace(go.Indicator(
             mode="number",
             value=geo_gap,
@@ -888,8 +747,6 @@ class PowerConcentrationReport(Visualization):
             },
             domain={'x': [0, 1], 'y': [0, 1]}
         ), row=2, col=2)
-
-        # Row 2, Col 3: % With Leadership
         fig.add_trace(go.Indicator(
             mode="number+gauge",
             value=metrics["pct_with_leadership_stipends"],
@@ -915,9 +772,6 @@ class PowerConcentrationReport(Visualization):
             },
             domain={'x': [0.15, 0.85], 'y': [0.35, 0.65]}
         ), row=2, col=3)
-
-        # Row 2, Col 4: Concentration Index
-        # (custom metric: top10% / bottom50%)
         comp_array = [r.get("total_comp", 0) for r in metrics["rows"]]
         top10_comp_total = sum(
             sorted(comp_array, reverse=True)[:10]
@@ -930,7 +784,6 @@ class PowerConcentrationReport(Visualization):
             concentration_index = top10_avg / bottom50_avg
         else:
             concentration_index = 0
-
         fig.add_trace(go.Indicator(
             mode="number",
             value=concentration_index,
@@ -942,7 +795,6 @@ class PowerConcentrationReport(Visualization):
             title={'text': 'Top10/Bottom50'},
             domain={'x': [0, 1], 'y': [0, 1]}
         ), row=2, col=4)
-
         fig.update_layout(
             title=dict(
                 text='Key Inequality Metrics Dashboard',
@@ -953,19 +805,15 @@ class PowerConcentrationReport(Visualization):
             height=600,
             showlegend=False
         )
-
         return fig
 
     def _generate_narrative(self, metrics: dict) -> str:
         """Generate auto-narrative summary in plain English."""
-        m = metrics  # shorthand
-
+        m = metrics
         top10_avg = m['top10_comp_dollars'] / 10
-
         pct_with_lead = m['pct_with_leadership_stipends']
         top10_share = m['top10_leadership_share']
         lead_exp_ratio = m['leadership_expense_ratio']
-
         narrative = f"""
 ## Executive Summary
 
@@ -1144,14 +992,11 @@ amounts based on position and distance, not verified payroll records.**
     def _markdown_to_html(self, markdown: str) -> str:
         """Convert markdown to HTML with proper formatting."""
         import re
-
         lines = markdown.split('\n')
         html_lines = []
         in_table = False
         table_header_done = False
-
         for line in lines:
-            # Skip empty lines
             if not line.strip():
                 if in_table:
                     html_lines.append('</table>')
@@ -1159,8 +1004,6 @@ amounts based on position and distance, not verified payroll records.**
                     table_header_done = False
                 html_lines.append('<br>')
                 continue
-
-            # Headers
             if line.startswith('### '):
                 if in_table:
                     html_lines.append('</table>')
@@ -1182,8 +1025,6 @@ amounts based on position and distance, not verified payroll records.**
                     table_header_done = False
                 html_lines.append(f'<h2>{line[2:]}</h2>')
                 continue
-
-            # Horizontal rules
             if line.strip() == '---':
                 if in_table:
                     html_lines.append('</table>')
@@ -1191,18 +1032,13 @@ amounts based on position and distance, not verified payroll records.**
                     table_header_done = False
                 html_lines.append('<hr>')
                 continue
-
-            # Tables
             if line.strip().startswith('|') and line.strip().endswith('|'):
-                # Check if it's a separator line
                 if re.match(r'^\|[\s\-:|]+\|$', line.strip()):
                     continue  # Skip separator lines
-
                 cells = [
                     cell.strip()
                     for cell in line.strip().split('|')[1:-1]
                 ]
-
                 if not in_table:
                     html_lines.append(
                         '<table style="width:100%; border-collapse: '
@@ -1210,9 +1046,7 @@ amounts based on position and distance, not verified payroll records.**
                     )
                     in_table = True
                     table_header_done = False
-
                 if not table_header_done:
-                    # First row is header
                     html_lines.append('<thead><tr>')
                     for cell in cells:
                         cell_html = self._format_inline_markdown(cell)
@@ -1224,7 +1058,6 @@ amounts based on position and distance, not verified payroll records.**
                     html_lines.append('</tr></thead><tbody>')
                     table_header_done = True
                 else:
-                    # Data rows
                     html_lines.append('<tr>')
                     for cell in cells:
                         cell_html = self._format_inline_markdown(cell)
@@ -1234,28 +1067,18 @@ amounts based on position and distance, not verified payroll records.**
                         )
                     html_lines.append('</tr>')
                 continue
-
-            # Regular paragraphs
             if in_table:
                 html_lines.append('</tbody></table>')
                 in_table = False
                 table_header_done = False
-
-            # Format inline markdown
             line_html = self._format_inline_markdown(line)
             html_lines.append(f'<p>{line_html}</p>')
-
-        # Close any open table
         if in_table:
             html_lines.append('</tbody></table>')
-
         return '\n'.join(html_lines)
 
     def _format_inline_markdown(self, text: str) -> str:
         """Format inline markdown (bold, italic, etc.)."""
-        import re
-
-        # Bold: **text** or __text__
         text = re.sub(
             r'\*\*(.+?)\*\*',
             r'<strong>\1</strong>',
@@ -1266,8 +1089,6 @@ amounts based on position and distance, not verified payroll records.**
             r'<strong>\1</strong>',
             text
         )
-
-        # Italic: *text* or _text_ (but not in middle of words)
         text = re.sub(
             r'(?<!\w)\*([^*]+?)\*(?!\w)',
             r'<em>\1</em>',
@@ -1278,7 +1099,6 @@ amounts based on position and distance, not verified payroll records.**
             r'<em>\1</em>',
             text
         )
-
         return text
 
     def _export_html(
@@ -1291,10 +1111,7 @@ amounts based on position and distance, not verified payroll records.**
         metrics: dict
     ) -> None:
         """Export complete interactive HTML report."""
-        # Convert narrative markdown to HTML
         narrative_html = self._markdown_to_html(narrative)
-
-        # Convert figures to HTML
         lorenz_html = fig_lorenz.to_html(
             full_html=False,
             include_plotlyjs=False
@@ -1311,10 +1128,7 @@ amounts based on position and distance, not verified payroll records.**
             full_html=False,
             include_plotlyjs=False
         )
-
         timestamp = datetime.now().strftime('%B %d, %Y at %I:%M %p')
-
-        # Build complete HTML
         html = f"""
 <!DOCTYPE html>
 <html>
@@ -1539,26 +1353,20 @@ source.
 </body>
 </html>
 """
-
-        # Write to file
         output_path = self.output_dir / "power_concentration_report.html"
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(html)
-
         print(f"  ✓ HTML report saved to {output_path}")
 
     def _export_json(self, metrics: dict) -> None:
         """Export metrics as JSON for external dashboards."""
-        # Remove large arrays for cleaner JSON
         export_metrics = {
             k: v for k, v in metrics.items()
             if not k.endswith('_array') and k != 'rows'
         }
-
         output_path = self.output_dir / "power_concentration_data.json"
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(export_metrics, f, indent=2)
-
         print(f"  ✓ Data JSON saved to {output_path}")
 
     def _export_pdf(
@@ -1569,9 +1377,7 @@ source.
         """Export PDF summary report."""
         if not REPORTLAB_AVAILABLE:
             return
-
         output_path = self.output_dir / "power_concentration_report.pdf"
-
         doc = SimpleDocTemplate(
             str(output_path),
             pagesize=letter,
@@ -1580,11 +1386,7 @@ source.
             topMargin=72,
             bottomMargin=18,
         )
-
-        # Container for PDF elements
         story = []
-
-        # Styles
         styles = getSampleStyleSheet()
         title_style = ParagraphStyle(
             'CustomTitle',
@@ -1594,7 +1396,6 @@ source.
             spaceAfter=30,
             alignment=TA_CENTER
         )
-
         heading_style = ParagraphStyle(
             'CustomHeading',
             parent=styles['Heading2'],
@@ -1603,8 +1404,6 @@ source.
             spaceAfter=12,
             spaceBefore=12
         )
-
-        # Title
         story.append(
             Paragraph("Power Concentration Report", title_style)
         )
@@ -1617,10 +1416,7 @@ source.
             styles['Normal']
         ))
         story.append(Spacer(1, 0.3 * inch))
-
-        # Executive Summary Box
         story.append(Paragraph("Executive Summary", heading_style))
-
         pct_with = metrics['pct_with_leadership_stipends']
         summary_data = [
             ["Metric", "Value"],
@@ -1653,7 +1449,6 @@ source.
                 f"{metrics['leadership_expense_ratio']:.1f}:1"
             ],
         ]
-
         summary_table = Table(summary_data, colWidths=[3*inch, 3*inch])
         summary_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0),
@@ -1666,19 +1461,14 @@ source.
             ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ]))
-
         story.append(summary_table)
         story.append(Spacer(1, 0.3 * inch))
-
-        # Key Findings
         story.append(Paragraph("Key Findings", heading_style))
-
         top10_share = metrics['top10_leadership_share']
         lead_exp_ratio = metrics['leadership_expense_ratio']
         chamber_gap = metrics['chamber_avg_gap']
         geo_gap = metrics['geographic_comp_gap']
         geo_dir = 'more' if geo_gap > 0 else 'less'
-
         findings = [
             (
                 f"• Top 10 legislators control {top10_share:.1f}% "
@@ -1701,18 +1491,13 @@ source.
                 "leadership stipends"
             ),
         ]
-
         for finding in findings:
             story.append(Paragraph(finding, styles['Normal']))
             story.append(Spacer(1, 0.1 * inch))
-
         story.append(Spacer(1, 0.2 * inch))
-
-        # Top 10 Earners
         story.append(
             Paragraph("Top 10 Compensation Earners", heading_style)
         )
-
         top10_data = [["Rank", "Name", "Chamber", "Total Comp"]]
         for idx, earner in enumerate(metrics['top_earners'], 1):
             top10_data.append([
@@ -1721,7 +1506,6 @@ source.
                 earner['chamber'],
                 f"${earner['total_comp']:,.0f}"
             ])
-
         col_widths = [0.5*inch, 2.5*inch, 1*inch, 1.5*inch]
         top10_table = Table(top10_data, colWidths=col_widths)
         top10_table.setStyle(TableStyle([
@@ -1736,11 +1520,8 @@ source.
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ('FONTSIZE', (0, 1), (-1, -1), 9),
         ]))
-
         story.append(top10_table)
         story.append(Spacer(1, 0.3 * inch))
-
-        # Methodology
         story.append(
             Paragraph("Methodology & Data Sources", heading_style)
         )
@@ -1755,14 +1536,10 @@ source.
         )
         story.append(Paragraph(methodology_text, styles['Normal']))
         story.append(Spacer(1, 0.2 * inch))
-
-        # Footer
         footer_text = (
             "<i>For interactive visualizations and complete analysis, "
             "see power_concentration_report.html</i>"
         )
         story.append(Paragraph(footer_text, styles['Normal']))
-
-        # Build PDF
         doc.build(story)
         print(f"  ✓ PDF report saved to {output_path}")
