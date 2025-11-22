@@ -707,6 +707,95 @@ def export_enhanced_html_report(
             margin-top: 3px;
         }}
         
+        /* Metadata Edit Section */
+        .metadata-edit-section {{
+            margin-top: 15px;
+            margin-bottom: 15px;
+        }}
+        
+        .btn-edit-metadata {{
+            padding: 10px 16px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }}
+        
+        .btn-edit-metadata:hover {{
+            background: #5568d3;
+            transform: translateY(-1px);
+        }}
+        
+        .metadata-edit-panel {{
+            padding: 20px;
+            background: #f0f4ff;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            margin-top: 10px;
+        }}
+        
+        .metadata-edit-panel h4 {{
+            margin-top: 0;
+            color: #667eea;
+        }}
+        
+        .edit-field {{
+            margin-bottom: 15px;
+        }}
+        
+        .edit-field label {{
+            display: block;
+            font-weight: 600;
+            font-size: 13px;
+            color: #333;
+            margin-bottom: 5px;
+        }}
+        
+        .edit-field input[type="text"],
+        .edit-field input[type="number"],
+        .edit-field select {{
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }}
+        
+        .edit-field input:focus,
+        .edit-field select:focus {{
+            outline: none;
+            border-color: #667eea;
+            background: white;
+        }}
+        
+        .edit-field small {{
+            display: block;
+            font-size: 11px;
+            color: #666;
+            margin-top: 3px;
+            font-style: italic;
+        }}
+        
+        .edit-field input.modified {{
+            border-color: #ff9800;
+            background: #fff8e1;
+        }}
+        
+        .edit-actions {{
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }}
+        
+        .edit-actions button {{
+            flex: 1;
+        }}
+        
         /* Metadata Footer */
         .metadata {{
             font-size: 12px;
@@ -1160,6 +1249,9 @@ def export_enhanced_html_report(
                 <div class="shortcut-key">E</div>
                 <div class="shortcut-desc">Export audit decisions</div>
                 
+                <div class="shortcut-key">Shift + E</div>
+                <div class="shortcut-desc">Edit metadata fields</div>
+                
                 <div class="shortcut-key">?</div>
                 <div class="shortcut-desc">Show this help</div>
             </div>
@@ -1245,8 +1337,19 @@ def export_enhanced_html_report(
                     closeAllModals();
                     break;
                 case 'e':
-                    e.preventDefault();
-                    exportAuditDecisions();
+                    if (e.shiftKey) {{
+                        // Shift+E: Edit metadata for current card
+                        e.preventDefault();
+                        const visibleCards = Array.from(document.querySelectorAll('.earmark-card:not(.hidden)'));
+                        if (currentCardIndex >= 0 && currentCardIndex < visibleCards.length) {{
+                            const cardId = parseInt(visibleCards[currentCardIndex].id.replace('card-', ''));
+                            toggleMetadataEdit(cardId);
+                        }}
+                    }} else {{
+                        // E: Export
+                        e.preventDefault();
+                        exportAuditDecisions();
+                    }}
                     break;
                 case '?':
                     e.preventDefault();
@@ -1681,6 +1784,122 @@ def export_enhanced_html_report(
             localStorage.setItem(`audit-${{cardId}}`, JSON.stringify(data));
         }}
         
+        // Metadata Editing Functions
+        function toggleMetadataEdit(cardId) {{
+            const panel = document.getElementById(`metadata-edit-${{cardId}}`);
+            if (panel) {{
+                const isVisible = panel.style.display !== 'none';
+                panel.style.display = isVisible ? 'none' : 'block';
+                
+                // Focus first input when opening
+                if (!isVisible) {{
+                    const firstInput = panel.querySelector('input');
+                    if (firstInput) {{
+                        setTimeout(() => firstInput.focus(), 100);
+                    }}
+                }}
+            }}
+        }}
+        
+        function saveMetadataEdits(cardId) {{
+            const card = document.getElementById(`card-${{cardId}}`);
+            
+            // Get edited values
+            const location = document.getElementById(`edit-location-${{cardId}}`).value.trim();
+            const organization = document.getElementById(`edit-organization-${{cardId}}`).value.trim();
+            const category = document.getElementById(`edit-category-${{cardId}}`).value;
+            const lineItem = document.getElementById(`edit-line-item-${{cardId}}`).value.trim();
+            const amount = document.getElementById(`edit-amount-${{cardId}}`).value;
+            
+            // Get original values
+            const origLocation = document.getElementById(`edit-location-${{cardId}}`).dataset.original;
+            const origOrg = document.getElementById(`edit-organization-${{cardId}}`).dataset.original;
+            const origLineItem = document.getElementById(`edit-line-item-${{cardId}}`).dataset.original;
+            const origAmount = document.getElementById(`edit-amount-${{cardId}}`).dataset.original;
+            const origCategory = document.getElementById(`edit-category-${{cardId}}`).dataset.original;
+            
+            // Determine which fields were manually edited
+            const editedFields = [];
+            if (location !== origLocation) editedFields.push('location');
+            if (organization !== origOrg) editedFields.push('organization');
+            if (category !== origCategory) editedFields.push('category');
+            if (lineItem !== origLineItem) editedFields.push('line_item');
+            if (amount !== origAmount) editedFields.push('amount');
+            
+            // Store in card data attributes
+            card.setAttribute('data-location', location);
+            card.setAttribute('data-organization', organization);
+            card.setAttribute('data-category', category);
+            card.setAttribute('data-line-item', lineItem);
+            card.setAttribute('data-amount', amount);
+            card.setAttribute('data-edited-fields', editedFields.join(','));
+            
+            // Save to localStorage
+            const saved = localStorage.getItem(`audit-${{cardId}}`);
+            const data = saved ? JSON.parse(saved) : {{}};
+            data.metadata = {{
+                location: location,
+                organization: organization,
+                category: category,
+                line_item: lineItem,
+                amount: parseFloat(amount) || 0,
+                edited_fields: editedFields
+            }};
+            localStorage.setItem(`audit-${{cardId}}`, JSON.stringify(data));
+            
+            // Visual feedback
+            const inputs = [
+                document.getElementById(`edit-location-${{cardId}}`),
+                document.getElementById(`edit-organization-${{cardId}}`),
+                document.getElementById(`edit-line-item-${{cardId}}`),
+                document.getElementById(`edit-amount-${{cardId}}`)
+            ];
+            
+            inputs.forEach(input => {{
+                if (input && input.value !== input.dataset.original) {{
+                    input.classList.add('modified');
+                }} else if (input) {{
+                    input.classList.remove('modified');
+                }}
+            }});
+            
+            // Show success message
+            alert(`Metadata saved! ${{editedFields.length}} field(s) modified.`);
+        }}
+        
+        function resetMetadataEdits(cardId) {{
+            if (!confirm('Reset all fields to auto-detected values?')) return;
+            
+            const fields = [
+                'edit-location',
+                'edit-organization',
+                'edit-line-item',
+                'edit-amount'
+            ];
+            
+            fields.forEach(fieldId => {{
+                const input = document.getElementById(`${{fieldId}}-${{cardId}}`);
+                if (input) {{
+                    input.value = input.dataset.original;
+                    input.classList.remove('modified');
+                }}
+            }});
+            
+            // Reset category to empty
+            const categorySelect = document.getElementById(`edit-category-${{cardId}}`);
+            if (categorySelect) {{
+                categorySelect.value = '';
+            }}
+            
+            // Clear from localStorage
+            const saved = localStorage.getItem(`audit-${{cardId}}`);
+            if (saved) {{
+                const data = JSON.parse(saved);
+                delete data.metadata;
+                localStorage.setItem(`audit-${{cardId}}`, JSON.stringify(data));
+            }}
+        }}
+        
         // Session Management
         function restoreAuditState() {{
             const cards = document.querySelectorAll('.earmark-card');
@@ -1699,6 +1918,50 @@ def export_enhanced_html_report(
                         card.setAttribute('data-corrected-member', data.correctedMember);
                         if (data.correctedName) {{
                             card.setAttribute('data-corrected-name', data.correctedName);
+                        }}
+                    }}
+                    // Restore metadata edits
+                    if (data.metadata) {{
+                        const meta = data.metadata;
+                        if (meta.location !== undefined) {{
+                            const input = document.getElementById(`edit-location-${{idx}}`);
+                            if (input) {{
+                                input.value = meta.location;
+                                if (meta.location !== input.dataset.original) {{
+                                    input.classList.add('modified');
+                                }}
+                            }}
+                        }}
+                        if (meta.organization !== undefined) {{
+                            const input = document.getElementById(`edit-organization-${{idx}}`);
+                            if (input) {{
+                                input.value = meta.organization;
+                                if (meta.organization !== input.dataset.original) {{
+                                    input.classList.add('modified');
+                                }}
+                            }}
+                        }}
+                        if (meta.category !== undefined) {{
+                            const select = document.getElementById(`edit-category-${{idx}}`);
+                            if (select) select.value = meta.category;
+                        }}
+                        if (meta.line_item !== undefined) {{
+                            const input = document.getElementById(`edit-line-item-${{idx}}`);
+                            if (input) {{
+                                input.value = meta.line_item;
+                                if (meta.line_item !== input.dataset.original) {{
+                                    input.classList.add('modified');
+                                }}
+                            }}
+                        }}
+                        if (meta.amount !== undefined) {{
+                            const input = document.getElementById(`edit-amount-${{idx}}`);
+                            if (input) {{
+                                input.value = meta.amount;
+                                if (meta.amount !== parseFloat(input.dataset.original)) {{
+                                    input.classList.add('modified');
+                                }}
+                            }}
                         }}
                     }}
                 }}
@@ -1749,6 +2012,8 @@ def export_enhanced_html_report(
                 let notes = '';
                 let correctedMember = '';
                 let correctedName = '';
+                let metadata = null;
+                let editedFields = [];
                 
                 if (saved) {{
                     const data = JSON.parse(saved);
@@ -1757,22 +2022,37 @@ def export_enhanced_html_report(
                     correctedMember = data.correctedMember || '';
                     correctedName = data.correctedName || '';
                     if (status !== 'unverified') verifiedCount++;
+                    
+                    // Get manually edited metadata if it exists
+                    if (data.metadata) {{
+                        metadata = data.metadata;
+                        editedFields = metadata.edited_fields || [];
+                    }}
                 }}
+                
+                // Use manually edited values if available, otherwise use card attributes
+                const finalLocation = metadata?.location || location;
+                const finalOrganization = metadata?.organization || organization;
+                const finalCategory = metadata?.category || '';
+                const finalLineItem = metadata?.line_item || lineItem;
+                const finalAmount = metadata?.amount || amount;
                 
                 decisions.push({{
                     amendment_number: amendmentNum,
                     fiscal_year: fiscalYear,
                     assigned_to: assignedTo,
-                    extracted_amount: amount,
+                    extracted_amount: finalAmount,
                     chamber: chamber,
                     sponsor_in_pdf: sponsorInPdf,
-                    line_item: lineItem,
-                    location: location,
-                    organization_or_recipient: organization,
+                    line_item: finalLineItem,
+                    location: finalLocation,
+                    organization_or_recipient: finalOrganization,
+                    subject_category: finalCategory,
                     audit_status: status,
                     audit_notes: notes,
                     corrected_member_code: correctedMember,
                     corrected_member_name: correctedName,
+                    manually_edited_fields: editedFields,
                     audited_at: new Date().toISOString()
                 }});
             }});
@@ -2010,7 +2290,7 @@ def generate_earmark_card(idx: int, row: dict[str, Any], all_rows: list[dict[str
             </div>
             
             <div class="correction-panel" id="correction-{idx}">
-                <h4 style="margin-top: 0;">🔧 Correct This Assignment</h4>
+                <h4 style="margin-top: 0;">Correct This Assignment</h4>
                 <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
                     Search for the correct member to assign this earmark to:
                 </p>
@@ -2019,6 +2299,83 @@ def generate_earmark_card(idx: int, row: dict[str, Any], all_rows: list[dict[str
                            oninput="searchMembers({idx}, this.value)"
                            onfocus="this.select()">
                     <div class="correction-results"></div>
+                </div>
+            </div>
+            
+            <div class="metadata-edit-section">
+                <button class="btn-edit-metadata" onclick="toggleMetadataEdit({idx})" style="width: 100%; margin-bottom: 10px;">
+                    Edit/Add Missing Fields
+                </button>
+                <div class="metadata-edit-panel" id="metadata-edit-{idx}" style="display: none;">
+                    <h4 style="margin-top: 0;">Edit Extracted Fields</h4>
+                    <p style="font-size: 12px; color: #666; margin-bottom: 15px;">
+                        Fill in or correct fields that weren't auto-detected:
+                    </p>
+                    
+                    <div class="edit-field">
+                        <label for="edit-location-{idx}">Location (City/Town):</label>
+                        <input type="text" id="edit-location-{idx}" 
+                               value="{location_esc if location else ''}"
+                               placeholder="e.g., Boston, Worcester County"
+                               data-original="{location_esc if location else ''}">
+                        <small>Auto-detected: {location_esc if location else 'None'}</small>
+                    </div>
+                    
+                    <div class="edit-field">
+                        <label for="edit-organization-{idx}">Organization/Recipient:</label>
+                        <input type="text" id="edit-organization-{idx}" 
+                               value="{organization_esc if organization else ''}"
+                               placeholder="e.g., Boys & Girls Club, Community Center"
+                               data-original="{organization_esc if organization else ''}">
+                        <small>Auto-detected: {organization_esc if organization else 'None'}</small>
+                    </div>
+                    
+                    <div class="edit-field">
+                        <label for="edit-category-{idx}">Subject Category:</label>
+                        <select id="edit-category-{idx}" data-original="">
+                            <option value="">Not specified</option>
+                            <option value="Health">Health</option>
+                            <option value="Education">Education</option>
+                            <option value="Infrastructure">Infrastructure</option>
+                            <option value="Transportation">Transportation</option>
+                            <option value="Arts & Culture">Arts & Culture</option>
+                            <option value="Economic Development">Economic Development</option>
+                            <option value="Public Safety">Public Safety</option>
+                            <option value="Environment">Environment</option>
+                            <option value="Housing">Housing</option>
+                            <option value="Social Services">Social Services</option>
+                            <option value="Parks & Recreation">Parks & Recreation</option>
+                            <option value="Other">Other</option>
+                        </select>
+                        <small>Choose category for better organization</small>
+                    </div>
+                    
+                    <div class="edit-field">
+                        <label for="edit-line-item-{idx}">Line Item Code:</label>
+                        <input type="text" id="edit-line-item-{idx}" 
+                               value="{line_item_esc}"
+                               placeholder="e.g., 7000-1234"
+                               data-original="{line_item_esc}">
+                        <small>Auto-detected: {line_item_esc}</small>
+                    </div>
+                    
+                    <div class="edit-field">
+                        <label for="edit-amount-{idx}">Amount ($):</label>
+                        <input type="number" id="edit-amount-{idx}" 
+                               value="{amount}"
+                               placeholder="e.g., 250000"
+                               data-original="{amount}">
+                        <small>Auto-detected: ${amount:,.2f}</small>
+                    </div>
+                    
+                    <div class="edit-actions">
+                        <button class="btn btn-primary" onclick="saveMetadataEdits({idx})">
+                            Save Changes
+                        </button>
+                        <button class="btn btn-secondary" onclick="resetMetadataEdits({idx})">
+                            Reset to Auto-Detected
+                        </button>
+                    </div>
                 </div>
             </div>
             
