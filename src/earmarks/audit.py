@@ -25,7 +25,7 @@ import html
 
 # Import enhanced HTML generator
 try:
-    from src.earmarks.audit_enhanced import export_enhanced_html_report
+    from earmarks.enhancements import export_enhanced_html_report
     ENHANCED_AVAILABLE = True
 except ImportError:
     ENHANCED_AVAILABLE = False
