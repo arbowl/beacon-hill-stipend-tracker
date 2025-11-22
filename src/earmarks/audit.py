@@ -126,8 +126,6 @@ def export_audit_report(
             export_enhanced_html_report(audit_rows, html_path, members)
         except Exception as e:
             raise e
-            print(f"  Warning: Enhanced HTML failed ({e}), using basic HTML")
-            _export_html_report(audit_rows, html_path)
     else:
         _export_html_report(audit_rows, html_path)
     
@@ -170,6 +168,7 @@ def _export_csv_report(audit_rows: list[dict[str, Any]], output_path: Path) -> N
                 'line_item': row['line_item'],
                 'page_number': row['page_number'],
                 'raw_text': row['raw_text'],
+                'subject_category:' : row.get('subject_category', ''),
                 'my_verification': row['my_verification']
             })
     
