@@ -2030,12 +2030,53 @@ def export_enhanced_html_report(
                     }}
                 }}
                 
-                // Use manually edited values if available, otherwise use card attributes
-                const finalLocation = metadata?.location || location;
-                const finalOrganization = metadata?.organization || organization;
-                const finalCategory = metadata?.category || '';
-                const finalLineItem = metadata?.line_item || lineItem;
-                const finalAmount = metadata?.amount || amount;
+                // Read current values from DOM (in case user edited but didn't click Save)
+                const locationInput = document.getElementById(`edit-location-${{idx}}`);
+                const organizationInput = document.getElementById(`edit-organization-${{idx}}`);
+                const categorySelect = document.getElementById(`edit-category-${{idx}}`);
+                const lineItemInput = document.getElementById(`edit-line-item-${{idx}}`);
+                const amountInput = document.getElementById(`edit-amount-${{idx}}`);
+                
+                // Use DOM values if they exist and differ from original, otherwise use saved metadata, otherwise use card attributes
+                const finalLocation = (locationInput && locationInput.value !== locationInput.dataset.original) 
+                    ? locationInput.value 
+                    : (metadata?.location || location);
+                    
+                const finalOrganization = (organizationInput && organizationInput.value !== organizationInput.dataset.original) 
+                    ? organizationInput.value 
+                    : (metadata?.organization || organization);
+                    
+                // For category, prioritize saved metadata over current DOM value since the dropdown
+                // might have been reset or never changed from default
+                const finalCategory = metadata?.category 
+                    || (categorySelect && categorySelect.value && categorySelect.value !== categorySelect.dataset.original ? categorySelect.value : '')
+                    || '';
+                    
+                const finalLineItem = (lineItemInput && lineItemInput.value !== lineItemInput.dataset.original) 
+                    ? lineItemInput.value 
+                    : (metadata?.line_item || lineItem);
+                    
+                const finalAmount = (amountInput && amountInput.value !== amountInput.dataset.original) 
+                    ? parseFloat(amountInput.value) || 0 
+                    : (metadata?.amount || amount);
+                
+                // Track which fields were actually edited (differ from originals)
+                const actualEditedFields = [];
+                if (locationInput && locationInput.value && locationInput.value !== locationInput.dataset.original) {{
+                    actualEditedFields.push('location');
+                }}
+                if (organizationInput && organizationInput.value && organizationInput.value !== organizationInput.dataset.original) {{
+                    actualEditedFields.push('organization');
+                }}
+                if (categorySelect && categorySelect.value) {{
+                    actualEditedFields.push('category');
+                }}
+                if (lineItemInput && lineItemInput.value && lineItemInput.value !== lineItemInput.dataset.original) {{
+                    actualEditedFields.push('line_item');
+                }}
+                if (amountInput && amountInput.value && parseFloat(amountInput.value) !== parseFloat(amountInput.dataset.original)) {{
+                    actualEditedFields.push('amount');
+                }}
                 
                 decisions.push({{
                     amendment_number: amendmentNum,
@@ -2052,7 +2093,7 @@ def export_enhanced_html_report(
                     audit_notes: notes,
                     corrected_member_code: correctedMember,
                     corrected_member_name: correctedName,
-                    manually_edited_fields: editedFields,
+                    manually_edited_fields: actualEditedFields,
                     audited_at: new Date().toISOString()
                 }});
             }});
@@ -2192,7 +2233,7 @@ def generate_earmark_card(idx: int, row: dict[str, Any], all_rows: list[dict[str
     # Escape values for use in HTML (can't use html.escape() inside f-strings)
     assigned_to_esc = html.escape(row.get('assigned_to', 'N/A'))
     sponsor_esc = html.escape(row.get('sponsor_in_pdf', 'N/A'))
-    line_item_esc = html.escape(row.get('line_item', 'N/A') or '')
+    line_item_esc = html.escape(row.get('line_item', 'N/A'))
     location_esc = html.escape(location or 'Not specified')
     organization_esc = html.escape(organization or 'Not specified')
     district_esc = html.escape(row.get('district', 'N/A'))
@@ -2215,6 +2256,11 @@ def generate_earmark_card(idx: int, row: dict[str, Any], all_rows: list[dict[str
     
     # Join card classes outside f-string
     card_classes_str = ' '.join(card_classes)
+    
+    # Build expand text button (avoiding backslashes in f-string)
+    expand_text_html = ''
+    if len(raw_text) > 500:
+        expand_text_html = f'<span class="expand-text" onclick="document.getElementById(\'text-{idx}\').innerHTML = `{raw_text}`; this.style.display=\'none\';">▼ Show full text</span>'
     
     card_html = f"""
         <div class="{card_classes_str}" {data_attrs}>
@@ -2271,7 +2317,7 @@ def generate_earmark_card(idx: int, row: dict[str, Any], all_rows: list[dict[str
             <div class="raw-text" id="text-{idx}">
 {raw_text[:500]}{'...' if len(raw_text) > 500 else ''}
             </div>
-            {f'<span class="expand-text" onclick="document.getElementById(\'text-{idx}\').innerHTML = `{raw_text}`; this.style.display=\'none\';">▼ Show full text</span>' if len(raw_text) > 500 else ''}
+            {expand_text_html}
             
             <div class="verification">
                 <button class="btn-correct" onclick="markStatus({idx}, 'correct')">
