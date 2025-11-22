@@ -329,9 +329,12 @@ class PowerConcentrationReport(Visualization):
             line=dict(color='gray', dash='dash'),
             hoverinfo='skip'
         ))
+        # Convert numpy arrays to lists for proper HTML serialization
+        lorenz_x = np.concatenate([[0], pop_pct]).tolist()
+        lorenz_y = np.concatenate([[0], stipend_pct]).tolist()
         fig.add_trace(go.Scatter(
-            x=np.concatenate([[0], pop_pct]),
-            y=np.concatenate([[0], stipend_pct]),
+            x=lorenz_x,
+            y=lorenz_y,
             mode='lines',
             name='Actual Distribution',
             line=dict(color='#d62728', width=3),
@@ -346,8 +349,8 @@ class PowerConcentrationReport(Visualization):
             top10_idx = n - 10
             top10_share = metrics["top10_leadership_share"]
             fig.add_trace(go.Scatter(
-                x=[pop_pct[top10_idx]],
-                y=[stipend_pct[top10_idx]],
+                x=[float(pop_pct[top10_idx])],
+                y=[float(stipend_pct[top10_idx])],
                 mode='markers+text',
                 marker=dict(size=12, color='darkred', symbol='diamond'),
                 text=['Top 10'],

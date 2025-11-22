@@ -8,7 +8,6 @@ from pathlib import Path
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 import shutil
-from pathlib import Path
 from typing import Optional
 
 import geopandas as gpd

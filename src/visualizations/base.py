@@ -13,11 +13,13 @@ class DataContext:
         leadership_roles: list[dict],
         committee_roles: dict[str, list[str]],
         computed_rows: list[dict],
+        earmarks_by_member: Optional[dict[str, list[dict]]] = None,
     ):
         self.members = members
         self.leadership_roles = leadership_roles
         self.committee_roles = committee_roles
         self.computed_rows = computed_rows
+        self.earmarks_by_member = earmarks_by_member or {}
 
 
 class Visualization(ABC):

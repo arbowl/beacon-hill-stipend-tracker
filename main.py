@@ -22,8 +22,28 @@ from __future__ import annotations
 from time import sleep
 from textwrap import dedent
 
-from src.computations import compute_totals, export_leadership_metrics
-from src.validate import run_cthru_validation
+from src.computations import (
+    compute_totals,
+    export_leadership_metrics,
+    compute_stipend_earmark_correlation,
+    export_earmark_metrics
+)
+from src.earmarks.fetchers import (
+    find_amendment_documents,
+    download_documents,
+    parse_sponsor_index
+)
+from src.earmarks.audit import (
+    export_audit_report,
+    print_audit_summary
+)
+from src.earmarks.parser import parse_amendment_book
+from src.earmarks.classifier import classify_earmarks
+from src.earmarks.mapper import map_earmarks_to_members
+from src.earmarks.validation import (
+    validate_assignments_against_audit,
+    export_validation_report
+)
 from src.fetchers import (
     pick_session,
     get_gc_number,
@@ -40,6 +60,7 @@ from src.helpers import (
     export_csv
 )
 from src.models import CYCLE_CONFIG
+from src.validate import run_cthru_validation
 from src.visualizations import DataContext
 
 
@@ -47,25 +68,25 @@ def select_session() -> int:
     """Prompt user to select General Court session."""
     session = pick_session()
     if not session:
-        return
+        return 1
     gc = get_gc_number(session)
     gc_name = get_gc_name(session)
     print(f"\n[1/5] Selected General Court: {gc} — {gc_name}")
     return gc
 
 
-def fetch_members(gc: int) -> list[dict]:
+def fetch_members_helper(gc: int) -> list[dict]:
     """Fetch members for the selected General Court."""
     print("\n[2/5] Fetching members…")
     members = fetch_members(gc)
     if not members:
         print("No members found; exiting.")
-        return
+        return []
     list_members(members)
     return members
 
 
-def fetch_leadership() -> list[dict]:
+def fetch_leadership_helper() -> list[dict]:
     """Fetch leadership roles for both chambers."""
     print("\n[3/5] Fetching leadership roles…")
     print("  → House leadership…")
@@ -78,7 +99,7 @@ def fetch_leadership() -> list[dict]:
     return leadership_all
 
 
-def fetch_committees(gc: int) -> list[dict]:
+def fetch_committees_helper(gc: int) -> list[dict]:
     """Fetch committees for the selected General Court."""
     print("\n[4/5] Fetching committees…")
     committees = fetch_committees(gc) or []
@@ -86,7 +107,7 @@ def fetch_committees(gc: int) -> list[dict]:
     return committees
 
 
-def fetch_all_or_limit() -> list[dict]:
+def fetch_all_or_limit(committees: list[dict]) -> list[dict]:
     """Prompt user to fetch all committees or limit the number."""
     limit_input = input(
         "Fetch ALL committees? (Y/n): "
@@ -187,14 +208,131 @@ def compute_rows(
     return rows
 
 
-def export_outputs(rows: list[dict]) -> None:
-    """Export outputs: members.csv and leadership metrics."""
+def fetch_earmarks_helper(
+    fy_year: int,
+    members: list[dict]
+) -> dict[str, list[dict]]:
+    """
+    Fetch and process earmarks for fiscal year.
+
+    Args:
+        fy_year: Fiscal year (e.g., 2026)
+        gc: General Court number
+        members: List of member dictionaries
+
+    Returns:
+        Dictionary mapping member codes to their earmarks
+    """
+    print(f"\n[Earmarks] Fetching earmark data for FY{fy_year}...")
+    try:
+        # Step 1: Discover documents
+        print("  [1/6] Discovering amendment documents...")
+        documents = find_amendment_documents(fy_year)
+        # Step 2: Download PDFs (cached)
+        print("  [2/6] Downloading PDF documents...")
+        pdfs = download_documents(documents, fy_year)
+        if not pdfs:
+            print("  [Earmarks] No PDFs available, skipping...")
+            return {}
+        # Step 3: Parse amendment books (cached)
+        print("  [3/6] Parsing amendment books...")
+        house_amendments = []
+        senate_amendments = []
+        if 'house_amendment_book' in pdfs:
+            house_amendments = parse_amendment_book(
+                pdfs['house_amendment_book'],
+                fy_year,
+                'House'
+            )
+        if 'senate_amendment_book' in pdfs:
+            senate_amendments = parse_amendment_book(
+                pdfs['senate_amendment_book'],
+                fy_year,
+                'Senate'
+            )
+        all_amendments = house_amendments + senate_amendments
+        print(f"    Found {len(all_amendments)} total amendments")
+        if not all_amendments:
+            print("  [Earmarks] No amendments found, skipping...")
+            return {}
+        # Step 4: Parse sponsor indexes
+        print("  [4/6] Parsing sponsor indexes...")
+        sponsor_index: dict[str, list[str]] = {}
+        if 'house_sponsor_index' in pdfs:
+            house_sponsors = parse_sponsor_index(
+                pdfs['house_sponsor_index'],
+                fy_year,
+                'House'
+            )
+            sponsor_index.update(house_sponsors)
+        if 'senate_sponsor_index' in pdfs:
+            senate_sponsors = parse_sponsor_index(
+                pdfs['senate_sponsor_index'],
+                fy_year,
+                'Senate'
+            )
+            sponsor_index.update(senate_sponsors)
+        print(f"    Found {len(sponsor_index)} sponsor mappings")
+        # Step 5: Classify earmarks
+        print("  [5/6] Classifying earmarks...")
+        earmarks = classify_earmarks(all_amendments)
+        print(f"    Identified {len(earmarks)} earmarks")
+        if not earmarks:
+            print("  [Earmarks] No earmarks identified, skipping...")
+            return {}
+        # Step 6: Map to members
+        print("  [6/6] Mapping earmarks to legislators...")
+        earmarks_by_member = map_earmarks_to_members(
+            earmarks,
+            members,
+            sponsor_index
+        )
+        print("\n[Earmarks] Successfully processed earmark data")
+        return earmarks_by_member
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        print(f"\n[Earmarks] Error processing earmarks: {e}")
+        print("[Earmarks] Continuing without earmark data...")
+        return {}
+
+
+def export_outputs(
+    rows: list[dict],
+    earmarks_by_member: dict[str, list[dict]] | None = None,
+    members: list[dict] | None = None
+) -> None:
+    """Export outputs: members.csv, leadership metrics, and earmarks."""
     print("\n" + "=" * 60)
     export_csv(rows)
     export_leadership_metrics(rows)
+    # Export earmark correlation if available
+    if earmarks_by_member:
+        print("\n[Earmarks] Computing earmark correlation metrics...")
+        try:
+            metrics = compute_stipend_earmark_correlation(
+                rows,
+                earmarks_by_member
+            )
+            export_earmark_metrics(metrics)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            print(f"[Earmarks] Error exporting metrics: {e}")
+        # Export audit report
+        if members:
+            print("\n[Earmarks] Generating audit reports...")
+            _csv_path, _html_path = export_audit_report(
+                earmarks_by_member,
+                members
+            )
+            print_audit_summary(earmarks_by_member)
+            # Validate against human audit decisions if available
+            validation_results = validate_assignments_against_audit(
+                earmarks_by_member
+            )
+            stats = validation_results['validation_stats']
+            if stats.get('audit_file_available'):
+                export_validation_report(validation_results)
 
 
-def run_cthru_validation() -> None:
+def run_cthru_validation_helper() -> None:
     """Run CTHRU validation and print summary."""
     try:
         resp = run_cthru_validation(
@@ -210,7 +348,7 @@ def run_cthru_validation() -> None:
             f"{resp['rows_model']} matched; "
             f"status: {resp['status_counts']}"
         )
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"\n[CTHRU] Validation failed: {e}")
         print("Continuing without CTHRU validation...")
 
@@ -240,23 +378,44 @@ def main() -> None:
     ========================================================
     """))
     gc = select_session()
-    members = fetch_members(gc)
-    leadership_all = fetch_leadership()
-    committees = fetch_committees(gc)
-    committees = fetch_all_or_limit()
+    members = fetch_members_helper(gc)
+    leadership_all = fetch_leadership_helper()
+    committees = fetch_committees_helper(gc)
+    committees = fetch_all_or_limit(committees)
     committee_roles = fetch_committee_roles(committees, gc)
     rows = compute_rows(
         members,
         leadership_all,
         committee_roles
     )
-    export_outputs(rows)
-    run_cthru_validation()
+    # Optional: Fetch earmark data
+    earmarks_by_member = {}
+    try:
+        # Prompt user for fiscal year
+        fy_input = input(
+            "\nFetch earmark data? Enter FY year (e.g., 2026) or press "
+            "Enter to skip: "
+        ).strip()
+        if fy_input:
+            fy_year = int(fy_input)
+            earmarks_by_member = fetch_earmarks_helper(fy_year, members)
+    except ValueError:
+        print("[Earmarks] Invalid year, skipping earmark data...")
+    except KeyboardInterrupt:
+        print("\n[Earmarks] Skipped by user")
+    export_outputs(rows, earmarks_by_member, members)
+    run_cthru_validation_helper()
     print("\n" + "=" * 60)
     print("✓ Pipeline complete!")
     print("\nOutputs:")
     print("  - out/members.csv (per-member compensation)")
     print("  - out/leadership_power.json (aggregate metrics)")
+    if earmarks_by_member:
+        print("  - out/earmark_correlation.json (earmark analysis)")
+        print("  - out/earmark_audit_report.csv (earmark audit - spreadsheet)")
+        print(
+            "  - out/earmark_audit_report.html (earmark audit - interactive)"
+        )
     print("  - out/cthru_variances.csv (CTHRU validation details)")
     print("  - out/cthru_summary.json (CTHRU validation summary)")
     print("=" * 60)
@@ -268,6 +427,7 @@ def main() -> None:
         leadership_roles=leadership_all,
         committee_roles=committee_roles,
         computed_rows=rows,
+        earmarks_by_member=earmarks_by_member if earmarks_by_member else None,
     )
     show_visualization_menu(context)
 

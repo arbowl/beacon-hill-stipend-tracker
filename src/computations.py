@@ -2,7 +2,7 @@ from datetime import date
 import json
 from pathlib import Path
 from statistics import median
-from typing import Optional
+from typing import Any, Optional
 
 from src.centroids import centroid_for
 from src.helpers import haversine_miles, distance_band_for_locality
@@ -162,3 +162,199 @@ def compute_totals(
             "last_updated": date.today().isoformat(),
         })
     return rows
+
+
+def aggregate_earmark_totals(
+    earmarks_by_member: dict[str, list[dict[str, Any]]]
+) -> dict[str, dict[str, Any]]:
+    """
+    Calculate earmark totals per legislator.
+    
+    Args:
+        earmarks_by_member: Dictionary mapping member codes to earmarks
+    
+    Returns:
+        Dictionary with earmark statistics per member:
+        {
+            'member_code': {
+                'total_earmark_count': int,
+                'total_earmark_dollars': float,
+                'average_earmark_amount': float,
+                'largest_earmark': float,
+                'earmarks': [list of full earmark dicts]
+            },
+            ...
+        }
+    """
+    aggregated = {}
+    
+    for member_code, earmarks in earmarks_by_member.items():
+        if member_code == 'UNKNOWN':
+            continue
+        
+        # Extract amounts
+        amounts = [
+            e.get('amount', 0)
+            for e in earmarks
+            if e.get('amount') is not None
+        ]
+        
+        # Calculate statistics
+        total_count = len(earmarks)
+        total_dollars = sum(amounts) if amounts else 0.0
+        avg_amount = total_dollars / len(amounts) if amounts else 0.0
+        max_amount = max(amounts) if amounts else 0.0
+        
+        aggregated[member_code] = {
+            'total_earmark_count': total_count,
+            'total_earmark_dollars': total_dollars,
+            'average_earmark_amount': avg_amount,
+            'largest_earmark': max_amount,
+            'earmarks': earmarks
+        }
+    
+    return aggregated
+
+
+def compute_stipend_earmark_correlation(
+    rows: list[dict[str, Any]],
+    earmarks_by_member: dict[str, list[dict[str, Any]]]
+) -> dict[str, Any]:
+    """
+    Compute correlation metrics between stipends and earmarks.
+    
+    Args:
+        rows: Member compensation rows from compute_totals()
+        earmarks_by_member: Earmarks grouped by member code
+    
+    Returns:
+        Aggregate metrics dictionary with:
+        - Total members with earmarks
+        - Total earmark dollars
+        - Average earmarks per member
+        - Correlation between stipends and earmarks
+        - Top earmark recipients
+    """
+    # Aggregate earmark data
+    earmark_totals = aggregate_earmark_totals(earmarks_by_member)
+    
+    # Enrich rows with earmark data
+    members_with_earmarks = []
+    for row in rows:
+        member_code = row.get('member_id', '')
+        if member_code in earmark_totals:
+            earmark_data = earmark_totals[member_code]
+            members_with_earmarks.append({
+                'member_code': member_code,
+                'name': row.get('name'),
+                'chamber': row.get('chamber'),
+                'district': row.get('district'),
+                'party': row.get('party'),
+                'role_stipends_total': row.get('role_stipends_total', 0),
+                'total_comp': row.get('total_comp', 0),
+                'earmark_count': earmark_data['total_earmark_count'],
+                'earmark_dollars': earmark_data['total_earmark_dollars'],
+                'avg_earmark_amount': earmark_data['average_earmark_amount'],
+                'largest_earmark': earmark_data['largest_earmark']
+            })
+    
+    # Calculate aggregate statistics
+    total_earmark_dollars = sum(
+        m['earmark_dollars'] for m in members_with_earmarks
+    )
+    total_earmarks = sum(
+        m['earmark_count'] for m in members_with_earmarks
+    )
+    
+    # Top 10 by earmark dollars
+    top_10_earmarks = sorted(
+        members_with_earmarks,
+        key=lambda x: x['earmark_dollars'],
+        reverse=True
+    )[:10]
+    
+    # Calculate percentage of members with earmarks
+    pct_with_earmarks = round(
+        100 * len(members_with_earmarks) / max(1, len(rows)),
+        1
+    )
+    
+    # Simple correlation: members with high stipends vs high earmarks
+    # Count members in both top quartiles
+    if members_with_earmarks:
+        stipend_threshold = sorted(
+            [m['role_stipends_total'] for m in members_with_earmarks],
+            reverse=True
+        )[len(members_with_earmarks) // 4] if len(
+            members_with_earmarks
+        ) >= 4 else 0
+        
+        earmark_threshold = sorted(
+            [m['earmark_dollars'] for m in members_with_earmarks],
+            reverse=True
+        )[len(members_with_earmarks) // 4] if len(
+            members_with_earmarks
+        ) >= 4 else 0
+        
+        high_both = sum(
+            1 for m in members_with_earmarks
+            if (m['role_stipends_total'] >= stipend_threshold and
+                m['earmark_dollars'] >= earmark_threshold)
+        )
+    else:
+        high_both = 0
+    
+    metrics = {
+        'total_members': len(rows),
+        'members_with_earmarks': len(members_with_earmarks),
+        'pct_with_earmarks': pct_with_earmarks,
+        'total_earmarks': total_earmarks,
+        'total_earmark_dollars': total_earmark_dollars,
+        'avg_earmarks_per_member': (
+            round(total_earmarks / len(members_with_earmarks), 1)
+            if members_with_earmarks else 0
+        ),
+        'avg_dollars_per_member': (
+            round(total_earmark_dollars / len(members_with_earmarks), 2)
+            if members_with_earmarks else 0
+        ),
+        'top_10_earmark_recipients': [
+            {
+                'name': m['name'],
+                'chamber': m['chamber'],
+                'district': m['district'],
+                'earmark_count': m['earmark_count'],
+                'earmark_dollars': m['earmark_dollars'],
+                'role_stipends': m['role_stipends_total']
+            }
+            for m in top_10_earmarks
+        ],
+        'members_high_in_both': high_both,
+        'generated_at': date.today().isoformat(),
+        'notes': (
+            'Correlation analysis between leadership stipends and '
+            'earmark activity. High_in_both counts members in top '
+            'quartile for both stipends and earmarks.'
+        )
+    }
+    
+    return metrics
+
+
+def export_earmark_metrics(
+    metrics: dict[str, Any],
+    path: str = "out/earmark_correlation.json"
+) -> None:
+    """
+    Export earmark correlation metrics to JSON file.
+    
+    Args:
+        metrics: Metrics dictionary from compute_stipend_earmark_correlation
+        path: Output file path
+    """
+    Path("out").mkdir(parents=True, exist_ok=True)
+    Path(path).write_text(
+        json.dumps(metrics, indent=2),
+        encoding="utf-8"
+    )
+    print(f"[ok] Wrote {path}")

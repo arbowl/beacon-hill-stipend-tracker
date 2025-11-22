@@ -230,6 +230,154 @@ def export_csv(
         )
 
 
+def export_earmarks_csv(
+    earmarks: list[dict],
+    output_path: str = "out/earmarks.csv"
+) -> None:
+    """
+    Export earmarks to CSV file.
+    
+    Args:
+        earmarks: List of earmark dictionaries
+        output_path: Output file path
+    """
+    if not earmarks:
+        print(f"[skip] No earmarks to export to {output_path}")
+        return
+    
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    
+    cols = [
+        "amendment_number", "fy_year", "chamber", "amount", "line_item",
+        "description", "page_number", "sponsor_name", "matched_member",
+        "member_code", "confidence", "is_earmark",
+        "classification_confidence", "geographic_specific",
+        "organization_specific", "project_specific"
+    ]
+    
+    # Flatten earmark data for CSV export
+    flattened = []
+    for earmark in earmarks:
+        row = {
+            "amendment_number": earmark.get("amendment_number"),
+            "fy_year": earmark.get("fy_year"),
+            "chamber": earmark.get("chamber"),
+            "amount": earmark.get("amount"),
+            "line_item": earmark.get("line_item"),
+            "description": earmark.get("description", "")[:200],
+            "page_number": earmark.get("page_number"),
+        }
+        
+        # Add mapping metadata if available
+        mapping = earmark.get("mapping_metadata", {})
+        row["sponsor_name"] = mapping.get("sponsor_name")
+        row["matched_member"] = mapping.get("matched_member")
+        row["member_code"] = mapping.get("member_code")
+        row["confidence"] = mapping.get("confidence")
+        
+        # Add classification metadata if available
+        classification = earmark.get("classification", {})
+        row["is_earmark"] = classification.get("is_earmark")
+        row["classification_confidence"] = classification.get("confidence")
+        row["geographic_specific"] = classification.get("geographic_specific")
+        row["organization_specific"] = classification.get(
+            "organization_specific"
+        )
+        row["project_specific"] = classification.get("project_specific")
+        
+        flattened.append(row)
+    
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=cols, extrasaction="ignore"
+        )
+        writer.writeheader()
+        writer.writerows(flattened)
+    
+    print(f"[ok] Exported {len(earmarks)} earmarks to {output_path}")
+
+
+def export_member_earmarks_csv(
+    earmarks_by_member: dict[str, list[dict]],
+    output_path: str = "out/member_earmarks.csv"
+) -> None:
+    """
+    Export per-member earmark totals to CSV file.
+    
+    Args:
+        earmarks_by_member: Dictionary mapping member codes to earmarks
+        output_path: Output file path
+    """
+    if not earmarks_by_member:
+        print(f"[skip] No member earmarks to export to {output_path}")
+        return
+    
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    
+    cols = [
+        "member_code", "member_name", "chamber", "earmark_count",
+        "total_earmark_dollars", "average_earmark_amount",
+        "largest_earmark", "smallest_earmark"
+    ]
+    
+    # Aggregate per-member statistics
+    rows = []
+    for member_code, earmarks in earmarks_by_member.items():
+        if member_code == "UNMATCHED":
+            continue
+        
+        amounts = [
+            e.get("amount", 0)
+            for e in earmarks
+            if e.get("amount") is not None
+        ]
+        
+        # Get member info from first earmark's mapping metadata
+        member_name = "Unknown"
+        chamber = "Unknown"
+        if earmarks and "mapping_metadata" in earmarks[0]:
+            metadata = earmarks[0]["mapping_metadata"]
+            member_name = metadata.get("matched_member", "Unknown")
+            chamber = metadata.get("chamber", "Unknown")
+        
+        row = {
+            "member_code": member_code,
+            "member_name": member_name,
+            "chamber": chamber,
+            "earmark_count": len(earmarks),
+            "total_earmark_dollars": sum(amounts) if amounts else 0,
+            "average_earmark_amount": (
+                sum(amounts) / len(amounts) if amounts else 0
+            ),
+            "largest_earmark": max(amounts) if amounts else 0,
+            "smallest_earmark": min(amounts) if amounts else 0,
+        }
+        rows.append(row)
+    
+    # Sort by total dollars descending
+    rows.sort(
+        key=lambda x: float(x["total_earmark_dollars"]),  # type: ignore
+        reverse=True
+    )
+    
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=cols, extrasaction="ignore"
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+    
+    print(f"[ok] Exported {len(rows)} member summaries to {output_path}")
+    
+    # Print preview
+    print("\nTop 10 earmark recipients:")
+    for i, r in enumerate(rows[:10], 1):
+        name = r["member_name"]
+        count = r["earmark_count"]
+        total = r["total_earmark_dollars"]
+        print(f"  {i:2d}. {name:<30} {count:3d} earmarks  ${total:>12,.2f}")
+
+
 def show_visualization_menu(context: DataContext) -> None:
     """Display interactive menu for running visualizations."""
     

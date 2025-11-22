@@ -1,0 +1,7 @@
+{
+  "model": "qwen2.5:3b",
+  "host": "172.17.11.154",
+  "port": 11434,
+  "timeout": 30,
+  "classification_prompt": "You are an expert at identifying legislative earmarks. An earmark is a budget amendment that allocates funds to a specific geographic location, organization, or project, as opposed to general policy or statewide budget changes.\n\nGiven the following amendment information, determine if this is an earmark.\n\nAmendment Description:\n{description}\n\nAmount: ${amount}\n\nConsider:\n1. Does it mention a specific city, town, district, or geographic location?\n2. Does it name a specific organization, institution, or entity?\n3. Does it describe a specific project or initiative (not general policy)?\n4. Is the amount in a typical earmark range ($5,000 to $5,000,000)?\n\nRespond with a JSON object containing:\n- is_earmark: boolean (true or false)\n- confidence: float between 0.0 and 1.0\n- reasoning: brief explanation of your decision\n\nExample response:\n{\"is_earmark\": true, \"confidence\": 0.85, \"reasoning\": \"Mentions specific city and organization with a project description\"}\n\nYour response (JSON only, no other text):"
+}
