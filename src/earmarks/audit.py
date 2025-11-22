@@ -8,12 +8,27 @@ This module creates human-readable audit reports showing:
 4. Space for manual verification
 
 Outputs both CSV (for spreadsheet review) and HTML (for easier reading).
+
+Enhanced version includes:
+- Keyboard shortcuts for rapid navigation
+- Bulk actions and smart queues
+- Progress tracking and session management
+- Inline corrections with member search
+- Mobile-responsive design
+- Optimized for 1,000+ entries
 """
 
 from pathlib import Path
 from typing import Any
 import csv
 import html
+
+# Import enhanced HTML generator
+try:
+    from src.earmarks.audit_enhanced import export_enhanced_html_report
+    ENHANCED_AVAILABLE = True
+except ImportError:
+    ENHANCED_AVAILABLE = False
 
 
 def export_audit_report(
@@ -104,7 +119,16 @@ def export_audit_report(
     html_path = output_dir / 'earmark_audit_report.html'
     
     _export_csv_report(audit_rows, csv_path)
-    _export_html_report(audit_rows, html_path)
+    
+    # Use enhanced HTML if available, otherwise fall back to basic
+    if ENHANCED_AVAILABLE:
+        try:
+            export_enhanced_html_report(audit_rows, html_path, members)
+        except Exception as e:
+            print(f"  Warning: Enhanced HTML failed ({e}), using basic HTML")
+            _export_html_report(audit_rows, html_path)
+    else:
+        _export_html_report(audit_rows, html_path)
     
     return csv_path, html_path
 

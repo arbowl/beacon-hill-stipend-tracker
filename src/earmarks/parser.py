@@ -147,6 +147,92 @@ def extract_amendment_number(text: str) -> Optional[str]:
     return None
 
 
+def extract_location(text: str) -> Optional[str]:
+    """
+    Extract city/town/location from earmark text.
+    
+    Args:
+        text: Text to search for locations
+    
+    Returns:
+        Location string or None if not found
+    
+    Examples:
+        "for the city of Boston" -> "Boston"
+        "in Attleboro" -> "Attleboro"
+        "throughout Worcester County" -> "Worcester County"
+    """
+    if not text:
+        return None
+    
+    # Common location patterns in earmarks
+    patterns = [
+        r'\bin\s+(?:the\s+)?(?:city\s+of\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+        r'\bfor\s+(?:the\s+)?(?:city\s+of\s+|town\s+of\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+        r'\bthroughout\s+([A-Z][a-z]+(?:\s+(?:County|Region|District))?)',
+        r'\bat\s+(?:the\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+        r'\blocated\s+in\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+        # County patterns
+        r'\b([A-Z][a-z]+)\s+County\b',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            location = match.group(1).strip()
+            # Filter out common false positives
+            false_positives = {
+                'Massachusetts', 'Section', 'Item', 'Line', 'The', 'This',
+                'General', 'Court', 'House', 'Senate', 'Amendment'
+            }
+            if location not in false_positives:
+                return location
+    
+    return None
+
+
+def extract_organization_or_recipient(text: str) -> Optional[str]:
+    """
+    Extract organization, recipient, or project name from earmark text.
+    
+    Args:
+        text: Text to search for organizations/recipients
+    
+    Returns:
+        Organization/recipient string or None if not found
+    
+    Examples:
+        "for the Boys and Girls Club" -> "Boys and Girls Club"
+        "to support the Attleboro Youth Center" -> "Attleboro Youth Center"
+        "for an inclusive playground project" -> "inclusive playground project"
+    """
+    if not text:
+        return None
+    
+    # Patterns for organizations and projects
+    patterns = [
+        # "for [the] Organization Name"
+        r'\bfor\s+(?:the\s+)?([A-Z][A-Za-z\s&\-]+(?:Center|Club|Council|Foundation|Association|Project|Program|Initiative))',
+        # "to [the] Organization Name"
+        r'\bto\s+(?:the\s+)?([A-Z][A-Za-z\s&\-]+(?:Center|Club|Council|Foundation|Association|Project|Program|Initiative))',
+        # "support [the] Organization Name"
+        r'\bsupport\s+(?:the\s+)?([A-Z][A-Za-z\s&\-]+(?:Center|Club|Council|Foundation|Association|Project|Program|Initiative))',
+        # Project descriptions
+        r'\bfor\s+(?:a|an)\s+([a-z][a-z\s\-]+(?:project|program|initiative|facility|center))',
+        r'\bto\s+(?:construct|build|establish|create|fund)\s+(?:a|an)?\s*([a-z][a-z\s\-]+)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            org = match.group(1).strip()
+            # Clean up and validate
+            if len(org) > 5 and len(org) < 100:  # Reasonable length
+                return org
+    
+    return None
+
+
 def parse_amendment_book(
     pdf_path: Path,
     fy_year: int,
@@ -246,6 +332,8 @@ def parse_amendment_book(
                                 'line_item': None,
                                 'description': '',
                                 'primary_sponsor': None,
+                                'location': None,
+                                'organization_or_recipient': None,
                                 'raw_text': '',
                                 'page_number': page_num,
                                 'fy_year': fy_year,
@@ -284,6 +372,18 @@ def parse_amendment_book(
                                     current_amendment['primary_sponsor'] = (
                                         sponsor
                                     )
+                            
+                            # Try to extract location if not yet found
+                            if current_amendment.get('location') is None:
+                                location = extract_location(line)
+                                if location:
+                                    current_amendment['location'] = location
+                            
+                            # Try to extract organization if not yet found
+                            if current_amendment.get('organization_or_recipient') is None:
+                                org = extract_organization_or_recipient(line)
+                                if org:
+                                    current_amendment['organization_or_recipient'] = org
                     
                     # Save last amendment on page
                     if current_amendment is not None:
