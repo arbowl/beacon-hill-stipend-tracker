@@ -1912,7 +1912,7 @@ def generate_earmark_card(idx: int, row: dict[str, Any], all_rows: list[dict[str
     # Escape values for use in HTML (can't use html.escape() inside f-strings)
     assigned_to_esc = html.escape(row.get('assigned_to', 'N/A'))
     sponsor_esc = html.escape(row.get('sponsor_in_pdf', 'N/A'))
-    line_item_esc = html.escape(row.get('line_item', 'N/A'))
+    line_item_esc = html.escape(row.get('line_item', 'N/A') or '')
     location_esc = html.escape(location or 'Not specified')
     organization_esc = html.escape(organization or 'Not specified')
     district_esc = html.escape(row.get('district', 'N/A'))

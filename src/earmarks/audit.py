@@ -25,9 +25,9 @@ import html
 
 # Import enhanced HTML generator
 try:
-    from earmarks.enhancements import export_enhanced_html_report
+    from src.earmarks.enhancements import export_enhanced_html_report
     ENHANCED_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     ENHANCED_AVAILABLE = False
 
 
@@ -125,6 +125,7 @@ def export_audit_report(
         try:
             export_enhanced_html_report(audit_rows, html_path, members)
         except Exception as e:
+            raise e
             print(f"  Warning: Enhanced HTML failed ({e}), using basic HTML")
             _export_html_report(audit_rows, html_path)
     else:

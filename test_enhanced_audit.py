@@ -73,7 +73,7 @@ def test_enhanced_module_loading():
     print("\n[TEST] Testing Enhanced Module Loading...")
     
     try:
-        from src.earmarks.audit_enhanced import (
+        from src.earmarks.enhancements import (
             export_enhanced_html_report,
             generate_earmark_card
         )
@@ -195,7 +195,7 @@ def test_html_generation():
     print("\n[TEST] Testing HTML Generation...")
     
     try:
-        from src.earmarks.audit_enhanced import export_enhanced_html_report
+        from src.earmarks.enhancements import export_enhanced_html_report
         
         # Mock data
         audit_rows = [
