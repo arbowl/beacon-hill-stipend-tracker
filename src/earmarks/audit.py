@@ -461,7 +461,7 @@ def _export_html_report(audit_rows: list[dict[str, Any]], output_path: Path) -> 
                 </div>
                 <div class="info-item">
                     <span class="info-label">Line Item:</span>
-                    <span class="info-value">{html.escape(row['line_item'])}</span>
+                    <span class="info-value">{html.escape(row['line_item'] if row['line_item'] else '')}</span>
                 </div>
             </div>
             
